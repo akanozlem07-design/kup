@@ -2316,7 +2316,11 @@ function setBlock(x,y,z,id){
       else buildMesh(n);
     }
   }
-  if(!fluidBatch)saveGame();
+  if(!fluidBatch){
+    saveGame();
+    /* Blok değişiklikleri periyodik kayıt aralığına bağlı kalmasın. */
+    if(cur&&!cur.net&&dirty){if(jset('kd_w_'+cur.id,packEdits())){dirty=false;saveWorlds();}}
+  }
 }
 
 /* ---------- 3B Düşen Eşyalar (Dropped Items) & Kırma Parçacıkları ---------- */
