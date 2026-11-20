@@ -1,0 +1,249 @@
+// Küp Dünya Survival – bağımlılıksız (zero-dependency) Node.js sunucusu
+// HTTP (oyunun HTML'i) + WebSocket (/ws) aynı portta çalışır.
+'use strict';
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const PORT = process.env.PORT || 8080;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const PUB = __dirname;
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+/* ---------- Kalıcı depolama (JSON dosyaları, gecikmeli yazma) ---------- */
+function loadJSON(f, d) { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8')); } catch (e) { return d; } }
+const ACC = loadJSON('accounts.json', {});      // email -> {id,name,salt,hash}
+const LISTS = loadJSON('lists.json', {});       // userId -> [host,...]
+const SERVERS = loadJSON('servers.json', {});   // host -> S
+const dirty = new Set();
+let saveT = null;
+function mark(n) { dirty.add(n); if (!saveT) saveT = setTimeout(flush, 2000); }
+function flush() {
+  saveT = null;
+  const map = { accounts: ['accounts.json', ACC], lists: ['lists.json', LISTS], servers: ['servers.json', SERVERS] };
+  for (const n of dirty) {
+    const [f, obj] = map[n], tmp = path.join(DATA_DIR, f + '.tmp');
+    try { fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, path.join(DATA_DIR, f)); } catch (e) { console.error('kayıt hatası', e.message); }
+  }
+  dirty.clear();
+}
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { flush(); process.exit(0); });
+
+/* ---------- Yardımcılar ---------- */
+const ROOMS = {};   // host -> Set(client)
+const str = (v, n) => (typeof v === 'string' ? v : '').slice(0, n);
+const hash = (pass, salt) => crypto.scryptSync(String(pass), salt, 32).toString('hex');
+const uid = () => 'u' + crypto.randomBytes(5).toString('hex') + Date.now().toString(36);
+function send(c, o) { if (c.open) { try { c.sendText(JSON.stringify(o)); } catch (e) {} } }
+function ok(c, m, o) { o = o || {}; o.id = m.id; o.ok = true; send(c, o); }
+function bad(c, m, err) { send(c, { id: m.id, ok: false, err }); }
+function room(h) { return ROOMS[h] || (ROOMS[h] = new Set()); }
+function online(h) { return ROOMS[h] ? ROOMS[h].size : 0; }
+function bc(h, o, except) { const r = ROOMS[h]; if (r) for (const c of r) if (c.me.id !== except) send(c, o); }
+function infoOf(S, id) {
+  const p = S.players[id] || {};
+  return { host: S.host, name: S.name, desc: S.desc, logo: S.logo, max: S.max, mode: S.mode, type: S.type,
+    owner: S.owner.name, online: online(S.host), role: S.owner.id === id ? 'owner' : (p.role || 'member') };
+}
+const DEFPOS = () => ({ x: 0, y: 80, z: 0, yaw: 0, pitch: 0, dim: 0 });
+const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
+
+function leaveRoom(c) {
+  const h = c.cur; if (!h) return;
+  c.cur = null;
+  const r = ROOMS[h]; if (r) { r.delete(c); if (!r.size) delete ROOMS[h]; }
+  bc(h, { t: 'pq', id: c.me.id });
+}
+
+/* ---------- İstek işleyici ---------- */
+function handle(c, m) {
+  if (!m || typeof m.t !== 'string') return;
+  const t = m.t;
+  // --- hesap ---
+  if (t === 'reg' || t === 'login' || t === 'resume') {
+    let u;
+    if (t === 'resume') {
+      for (const k in ACC) if (ACC[k].id === m.token) u = ACC[k];
+      if (!u) return bad(c, m, 'Oturum bitti, tekrar giriş yap.');
+    } else if (t === 'reg') {
+      const email = str(m.email, 120).toLowerCase(), name = str(m.name, 20).trim(), pass = str(m.pass, 100);
+      if (!email || !name || pass.length < 4) return bad(c, m, 'Bilgiler eksik ya da şifre çok kısa.');
+      if (ACC[email]) return bad(c, m, 'Bu e-posta zaten kayıtlı.');
+      for (const k in ACC) if (ACC[k].name.toLowerCase() === name.toLowerCase()) return bad(c, m, 'Bu oyuncu adı alınmış.');
+      if (Object.keys(ACC).length > 20000) return bad(c, m, 'Kayıt şu an kapalı.');
+      const salt = crypto.randomBytes(12).toString('hex');
+      u = ACC[email] = { id: uid(), name, salt, hash: hash(pass, salt) };
+      mark('accounts');
+    } else {
+      u = ACC[str(m.email, 120).toLowerCase()];
+      if (!u || u.hash !== hash(str(m.pass, 100), u.salt)) return bad(c, m, 'E-posta ya da şifre yanlış.');
+    }
+    c.me = { id: u.id, name: u.name }; c.authed = true;
+    return ok(c, m, { me: c.me, token: u.id });
+  }
+  if (!c.authed) return bad(c, m, 'Önce giriş yap.');
+  if (t === 'logout') { leaveRoom(c); return; }
+
+  const h = str(m.host, 80).toLowerCase(), S = SERVERS[h], me = c.me;
+  const myList = () => LISTS[me.id] || (LISTS[me.id] = []);
+  const P = S && S.players, mine = P && P[me.id] || {};
+  const own = S && S.owner.id === me.id, adm = own || mine.role === 'admin';
+
+  switch (t) {
+    case 'srv.list':
+      return ok(c, m, { list: myList().map(x => SERVERS[x] ? infoOf(SERVERS[x], me.id) : { host: x, missing: true }) });
+    case 'srv.info':
+      return S ? ok(c, m, { info: infoOf(S, me.id) }) : bad(c, m, 'Sunucu bulunamadı.');
+    case 'srv.add': { const L = myList(); if (!S) return bad(c, m, 'Sunucu bulunamadı.'); if (!L.includes(h)) { L.push(h); mark('lists'); } return ok(c, m); }
+    case 'srv.remove': LISTS[me.id] = myList().filter(x => x !== h); mark('lists'); return ok(c, m);
+    case 'srv.create': {
+      const label = str(m.label, 40).toLowerCase(), host = label + '.küp.me';
+      if (!label) return bad(c, m, 'Adres geçersiz.');
+      if (SERVERS[host]) return bad(c, m, 'Bu adres zaten alınmış.');
+      if (myList().filter(x => SERVERS[x] && SERVERS[x].owner.id === me.id).length >= 5) return bad(c, m, 'En fazla 5 sunucu açabilirsin.');
+      const S2 = SERVERS[host] = { host, name: str(m.name, 60), desc: str(m.desc, 300), logo: str(m.logo, 20000), max: Math.min(Math.max(+m.max || 10, 1), 100),
+        mode: str(m.mode, 20), type: str(m.type, 20), seed: m.seed, seedText: str(m.seedText, 60),
+        owner: { id: me.id, name: me.name }, players: {}, edits: {} };
+      S2.players[me.id] = { name: me.name, role: 'owner' };
+      myList().push(host); mark('servers'); mark('lists');
+      return ok(c, m, { info: infoOf(S2, me.id) });
+    }
+    case 'join': {
+      if (!S) return bad(c, m, 'Sunucu bulunamadı ya da silinmiş.');
+      if (mine.ban) return bad(c, m, 'Bu sunucudan yasaklandın.');
+      const r = room(h);
+      if (!r.has(c) && r.size >= S.max) { if (!r.size) delete ROOMS[h]; return bad(c, m, 'Sunucu dolu.'); }
+      if (c.cur && c.cur !== h) leaveRoom(c);
+      // aynı hesap başka bağlantıdan girdiyse eskisini at
+      for (const o of r) if (o !== c && o.me.id === me.id) { r.delete(o); o.cur = null; send(o, { t: 'kick', reason: 'Başka yerden giriş yapıldı.' }); }
+      if (!P[me.id]) P[me.id] = { name: me.name, role: 'member' };
+      P[me.id].name = me.name;
+      const first = !r.has(c); r.add(c); c.cur = h;
+      if (first && !m.re) bc(h, { t: 'pj', p: Object.assign({ id: me.id, name: me.name }, P[me.id].pos || DEFPOS()) }, me.id);
+      if (!myList().includes(h)) { myList().push(h); mark('lists'); }
+      const others = [...r].filter(x => x !== c).map(x => Object.assign({ id: x.me.id, name: x.me.name }, P[x.me.id].pos || DEFPOS()));
+      mark('servers');
+      return ok(c, m, { info: infoOf(S, me.id), world: { seed: S.seed, seedText: S.seedText, type: S.type, mode: S.mode }, edits: S.edits, players: others, pos: P[me.id].pos || null });
+    }
+    case 'blk': {
+      const s = SERVERS[c.cur]; if (!s || !Array.isArray(m.b)) return;
+      const clean = [];
+      for (const e of m.b.slice(0, 2000)) {
+        if (!Array.isArray(e) || typeof e[0] !== 'string' || !/^[EN]?-?\d+,-?\d+$/.test(e[0]) || !Number.isInteger(e[1]) || e[1] < 0 || e[1] > 70000 || !Number.isInteger(e[2])) continue;
+        (s.edits[e[0]] || (s.edits[e[0]] = {}))[e[1]] = e[2]; clean.push(e);
+      }
+      if (clean.length) { bc(c.cur, { t: 'blk', b: clean }, me.id); mark('servers'); }
+      return;
+    }
+    case 'pos': {
+      const s = SERVERS[c.cur]; if (!s) return;
+      const p = { x: num(m.x), y: num(m.y), z: num(m.z), yaw: num(m.yaw), pitch: num(m.pitch), dim: m.dim === 1 || m.dim === 2 ? m.dim : 0 };
+      if (s.players[me.id]) s.players[me.id].pos = p;
+      bc(c.cur, Object.assign({ t: 'pm', id: me.id }, p), me.id);
+      return;
+    }
+    case 'leave': leaveRoom(c); mark('servers'); return;
+  }
+
+  // --- yönetim (sunucu seçili olmalı) ---
+  if (!t.startsWith('srv.')) return;
+  if (!S) return bad(c, m, 'Sunucu bulunamadı.');
+  switch (t) {
+    case 'srv.players':
+      return ok(c, m, { max: S.max, players: Object.keys(P).map(x => ({ id: x, name: P[x].name, role: S.owner.id === x ? 'owner' : (P[x].role || 'member'), banned: !!P[x].ban, online: [...online_set(h)].some(o => o.me.id === x) })) });
+    case 'srv.edit':
+      if (!adm) return bad(c, m, 'Yetkin yok.');
+      S.name = str(m.name, 60); S.desc = str(m.desc, 300); S.max = Math.min(Math.max(+m.max || S.max, 1), 100); S.logo = str(m.logo, 20000);
+      mark('servers'); bc(h, { t: 'meta', info: infoOf(S, me.id) });
+      return ok(c, m, { info: infoOf(S, me.id) });
+    case 'srv.delete':
+      if (!own) return bad(c, m, 'Sadece sahip silebilir.');
+      bc(h, { t: 'closed' }, me.id);
+      for (const o of [...online_set(h)]) o.cur = null;
+      delete ROOMS[h]; delete SERVERS[h]; mark('servers');
+      return ok(c, m);
+    case 'srv.admin': case 'srv.adminByName': {
+      if (!own) return bad(c, m, 'Sadece sahip yetki verebilir.');
+      let target = m.pid;
+      if (t === 'srv.adminByName') { target = null; for (const k in P) if (P[k].name.toLowerCase() === str(m.name, 40).toLowerCase()) target = k; if (!target) return bad(c, m, 'Oyuncu bulunamadı. Sunucuya en az bir kez girmiş olmalı.'); }
+      if (!P[target] || target === S.owner.id) return bad(c, m, 'Geçersiz oyuncu.');
+      P[target].role = (t === 'srv.adminByName' ? true : !!m.on) ? 'admin' : 'member';
+      for (const o of online_set(h)) if (o.me.id === target) send(o, { t: 'role', role: P[target].role });
+      mark('servers'); return ok(c, m);
+    }
+    case 'srv.ban': case 'srv.kick': {
+      if (!adm) return bad(c, m, 'Yetkin yok.');
+      if (!P[m.pid] || m.pid === S.owner.id) return bad(c, m, 'Geçersiz oyuncu.');
+      if (t === 'srv.ban') P[m.pid].ban = !!m.on;
+      if (t === 'srv.kick' || m.on) for (const o of [...online_set(h)]) if (o.me.id === m.pid) {
+        send(o, { t: 'kick', reason: t === 'srv.ban' ? 'Sunucudan yasaklandın.' : 'Sunucudan atıldın.' }); leaveRoom(o);
+      }
+      mark('servers'); return ok(c, m);
+    }
+  }
+}
+function online_set(h) { return ROOMS[h] || new Set(); }
+
+/* ---------- Minimal WebSocket (RFC 6455) ---------- */
+const MAXMSG = 4 * 1024 * 1024;
+function accept(req, socket) {
+  const key = req.headers['sec-websocket-key'];
+  if (!key) return socket.destroy();
+  socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' +
+    crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64') + '\r\n\r\n');
+  socket.setNoDelay(true);
+  const c = { open: true, me: { id: '', name: '' }, authed: false, cur: null, rate: 0, rateT: Date.now() };
+  c.sendFrame = (op, buf) => {
+    const n = buf.length; let hd;
+    if (n < 126) hd = Buffer.from([0x80 | op, n]);
+    else if (n < 65536) { hd = Buffer.alloc(4); hd[0] = 0x80 | op; hd[1] = 126; hd.writeUInt16BE(n, 2); }
+    else { hd = Buffer.alloc(10); hd[0] = 0x80 | op; hd[1] = 127; hd.writeBigUInt64BE(BigInt(n), 2); }
+    if (!socket.destroyed) socket.write(Buffer.concat([hd, buf]));
+  };
+  c.sendText = s => c.sendFrame(1, Buffer.from(s));
+  let buf = Buffer.alloc(0), frag = [], fragLen = 0;
+  const close = () => { if (!c.open) return; c.open = false; leaveRoom(c); try { socket.destroy(); } catch (e) {} };
+  socket.on('data', d => {
+    buf = Buffer.concat([buf, d]);
+    while (buf.length >= 2) {
+      const fin = buf[0] & 0x80, op = buf[0] & 15, masked = buf[1] & 0x80; let len = buf[1] & 127, off = 2;
+      if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
+      else if (len === 127) { if (buf.length < 10) return; len = Number(buf.readBigUInt64BE(2)); off = 10; }
+      if (len > MAXMSG || !masked) return close();
+      if (buf.length < off + 4 + len) return;
+      const mask = buf.slice(off, off + 4), p = Buffer.from(buf.slice(off + 4, off + 4 + len));
+      for (let i = 0; i < p.length; i++) p[i] ^= mask[i & 3];
+      buf = buf.slice(off + 4 + len);
+      if (op === 8) { c.sendFrame(8, Buffer.alloc(0)); return close(); }
+      if (op === 9) { c.sendFrame(10, p); continue; }
+      if (op === 10) continue;
+      if (op === 1 || op === 2 || op === 0) {
+        frag.push(p); fragLen += p.length; if (fragLen > MAXMSG) return close();
+        if (!fin) continue;
+        const txt = Buffer.concat(frag).toString('utf8'); frag = []; fragLen = 0;
+        const now = Date.now(); if (now - c.rateT > 1000) { c.rateT = now; c.rate = 0; }
+        if (++c.rate > 100) continue; // saniyede en fazla 100 mesaj
+        let m; try { m = JSON.parse(txt); } catch (e) { continue; }
+        try { handle(c, m); } catch (e) { console.error('hata', e); if (m && m.id !== undefined) bad(c, m, 'Sunucu hatası.'); }
+      }
+    }
+  });
+  socket.on('close', close); socket.on('error', close);
+  const ping = setInterval(() => { if (!c.open) return clearInterval(ping); c.sendFrame(9, Buffer.alloc(0)); }, 25000);
+}
+
+/* ---------- HTTP ---------- */
+const server = http.createServer((req, res) => {
+  const u = req.url.split('?')[0];
+  if (u === '/health') { res.writeHead(200); return res.end('ok'); }
+  if (u !== '/' && u !== '/index.html') { res.writeHead(404); return res.end('404'); }
+  const f = path.join(PUB, 'index.html');
+  fs.readFile(f, (e, d) => {
+    if (e) { res.writeHead(404); return res.end('404'); }
+    const ext = path.extname(f), types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
+    res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' }); res.end(d);
+  });
+});
+server.on('upgrade', (req, socket) => { if (req.url.split('?')[0] !== '/ws') return socket.destroy(); accept(req, socket); });
+server.listen(PORT, () => console.log('Küp Dünya sunucusu :' + PORT));
