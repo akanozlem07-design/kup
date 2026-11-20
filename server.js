@@ -9,6 +9,8 @@ const crypto = require('crypto');
 const PORT = process.env.PORT || 8080;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PUB = __dirname;
+let BUILD = '0';
+try { BUILD = crypto.createHash('sha1').update(fs.readFileSync(path.join(PUB, 'index.html'))).digest('hex').slice(0, 10); } catch (e) {}
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 /* ---------- Kalıcı depolama (JSON dosyaları, gecikmeli yazma) ---------- */
@@ -46,6 +48,28 @@ function infoOf(S, id) {
   return { host: S.host, name: S.name, desc: S.desc, logo: S.logo, max: S.max, mode: S.mode, type: S.type,
     owner: S.owner.name, online: online(S.host), role: S.owner.id === id ? 'owner' : (p.role || 'member') };
 }
+const newTok = () => crypto.randomBytes(16).toString('hex');
+const clampN = (v, a, b) => Math.min(Math.max(+v || a, a), b);
+function bkOf(S) {
+  return { host: S.host, name: S.name, desc: S.desc, logo: S.logo, max: S.max, mode: S.mode, type: S.type,
+    seed: S.seed, seedText: S.seedText, owner: { id: S.owner.id, name: S.owner.name } };
+}
+function mergeEdits(S, edits) {
+  if (!edits || typeof edits !== 'object') return 0;
+  let n = 0, total = 0;
+  for (const k of Object.keys(edits).slice(0, 20000)) {
+    if (!/^[EN]?-?\d+,-?\d+$/.test(k)) continue;
+    const mm = edits[k]; if (!mm || typeof mm !== 'object') continue;
+    for (const i of Object.keys(mm)) {
+      if (++total > 400000) return n;
+      const iv = +i, v = mm[i];
+      if (!Number.isInteger(iv) || iv < 0 || iv > 70000 || !Number.isInteger(v)) continue;
+      const d = S.edits[k] || (S.edits[k] = {});
+      if (d[iv] === undefined) { d[iv] = v; n++; }
+    }
+  }
+  return n;
+}
 const DEFPOS = () => ({ x: 0, y: 80, z: 0, yaw: 0, pitch: 0, dim: 0 });
 const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
 
@@ -62,9 +86,10 @@ function handle(c, m) {
   const t = m.t;
   // --- hesap ---
   if (t === 'reg' || t === 'login' || t === 'resume') {
-    let u;
+    let u, ek;
     if (t === 'resume') {
-      for (const k in ACC) if (ACC[k].id === m.token) u = ACC[k];
+      const tk = str(m.token, 64);
+      if (tk) for (const k in ACC) if (ACC[k].tok && ACC[k].tok === tk) { u = ACC[k]; ek = k; }
       if (!u) return bad(c, m, 'Oturum bitti, tekrar giriş yap.');
     } else if (t === 'reg') {
       const email = str(m.email, 120).toLowerCase(), name = str(m.name, 20).trim(), pass = str(m.pass, 100);
@@ -73,14 +98,26 @@ function handle(c, m) {
       for (const k in ACC) if (ACC[k].name.toLowerCase() === name.toLowerCase()) return bad(c, m, 'Bu oyuncu adı alınmış.');
       if (Object.keys(ACC).length > 20000) return bad(c, m, 'Kayıt şu an kapalı.');
       const salt = crypto.randomBytes(12).toString('hex');
-      u = ACC[email] = { id: uid(), name, salt, hash: hash(pass, salt) };
+      u = ACC[email] = { id: uid(), name, salt, hash: hash(pass, salt), tok: newTok() }; ek = email;
       mark('accounts');
     } else {
-      u = ACC[str(m.email, 120).toLowerCase()];
+      ek = str(m.email, 120).toLowerCase(); u = ACC[ek];
       if (!u || u.hash !== hash(str(m.pass, 100), u.salt)) return bad(c, m, 'E-posta ya da şifre yanlış.');
     }
+    if (!u.tok) { u.tok = newTok(); mark('accounts'); }
     c.me = { id: u.id, name: u.name }; c.authed = true;
-    return ok(c, m, { me: c.me, token: u.id });
+    return ok(c, m, { me: c.me, token: u.tok, acct: { email: ek, id: u.id, name: u.name, salt: u.salt, hash: u.hash, tok: u.tok } });
+  }
+  if (t === 'restore') {
+    const a = m.acct || {};
+    const email = str(a.email, 120).toLowerCase(), name = str(a.name, 20).trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || !name || !/^u[0-9a-z]{10,30}$/.test(str(a.id, 40)) ||
+        !/^[0-9a-f]{24}$/.test(str(a.salt, 40)) || !/^[0-9a-f]{64}$/.test(str(a.hash, 80)) || !/^[0-9a-f]{32}$/.test(str(a.tok, 40))) return bad(c, m, 'Geçersiz kayıt.');
+    if (ACC[email]) return ok(c, m);
+    if (Object.keys(ACC).length > 20000) return bad(c, m, 'Kayıt şu an kapalı.');
+    for (const k in ACC) if (ACC[k].id === a.id || ACC[k].tok === a.tok || ACC[k].name.toLowerCase() === name.toLowerCase()) return bad(c, m, 'Çakışma.');
+    ACC[email] = { id: a.id, name, salt: a.salt, hash: a.hash, tok: a.tok }; mark('accounts');
+    return ok(c, m);
   }
   if (!c.authed) return bad(c, m, 'Önce giriş yap.');
   if (t === 'logout') { leaveRoom(c); return; }
@@ -92,7 +129,7 @@ function handle(c, m) {
 
   switch (t) {
     case 'srv.list':
-      return ok(c, m, { list: myList().map(x => SERVERS[x] ? infoOf(SERVERS[x], me.id) : { host: x, missing: true }) });
+      return ok(c, m, { list: myList().map(x => SERVERS[x] ? Object.assign(infoOf(SERVERS[x], me.id), SERVERS[x].owner.id === me.id ? { bk: bkOf(SERVERS[x]) } : {}) : { host: x, missing: true }) });
     case 'srv.info':
       return S ? ok(c, m, { info: infoOf(S, me.id) }) : bad(c, m, 'Sunucu bulunamadı.');
     case 'srv.add': { const L = myList(); if (!S) return bad(c, m, 'Sunucu bulunamadı.'); if (!L.includes(h)) { L.push(h); mark('lists'); } return ok(c, m); }
@@ -107,7 +144,29 @@ function handle(c, m) {
         owner: { id: me.id, name: me.name }, players: {}, edits: {} };
       S2.players[me.id] = { name: me.name, role: 'owner' };
       myList().push(host); mark('servers'); mark('lists');
-      return ok(c, m, { info: infoOf(S2, me.id) });
+      return ok(c, m, { info: infoOf(S2, me.id), bk: bkOf(S2) });
+    }
+    case 'sync.srv': {
+      if (!/^\S{1,40}\.küp\.me$/.test(h)) return bad(c, m, 'Geçersiz adres.');
+      let S3 = S; const mt = m.meta;
+      if (!S3 && mt && typeof mt === 'object' && mt.owner && mt.owner.id === me.id && str(mt.host, 80).toLowerCase() === h) {
+        S3 = SERVERS[h] = { host: h, name: str(mt.name, 60), desc: str(mt.desc, 300), logo: str(mt.logo, 20000), max: clampN(mt.max || 10, 1, 100),
+          mode: str(mt.mode, 20), type: str(mt.type, 20), seed: typeof mt.seed === 'number' && isFinite(mt.seed) ? mt.seed : 0, seedText: str(mt.seedText, 60),
+          owner: { id: me.id, name: me.name }, players: {}, edits: {} };
+        S3.players[me.id] = { name: me.name, role: 'owner' };
+        mark('servers');
+        if (!myList().includes(h)) { myList().push(h); mark('lists'); }
+      }
+      if (!S3) return ok(c, m, { restored: false });
+      const pl = S3.players[me.id];
+      if (pl && !pl.ban && mergeEdits(S3, m.edits)) mark('servers');
+      return ok(c, m, { restored: true });
+    }
+    case 'sync.lists': {
+      const L = myList(); let n = 0;
+      if (Array.isArray(m.lists)) for (const x of m.lists.slice(0, 100)) { const hh = str(x, 80).toLowerCase(); if (SERVERS[hh] && !L.includes(hh)) { L.push(hh); n++; } }
+      if (n) mark('lists');
+      return ok(c, m);
     }
     case 'join': {
       if (!S) return bad(c, m, 'Sunucu bulunamadı ya da silinmiş.');
@@ -124,7 +183,7 @@ function handle(c, m) {
       if (!myList().includes(h)) { myList().push(h); mark('lists'); }
       const others = [...r].filter(x => x !== c).map(x => Object.assign({ id: x.me.id, name: x.me.name }, P[x.me.id].pos || DEFPOS()));
       mark('servers');
-      return ok(c, m, { info: infoOf(S, me.id), world: { seed: S.seed, seedText: S.seedText, type: S.type, mode: S.mode }, edits: S.edits, players: others, pos: P[me.id].pos || null });
+      return ok(c, m, { info: infoOf(S, me.id), bk: bkOf(S), world: { seed: S.seed, seedText: S.seedText, type: S.type, mode: S.mode }, edits: S.edits, players: others, pos: P[me.id].pos || null });
     }
     case 'blk': {
       const s = SERVERS[c.cur]; if (!s || !Array.isArray(m.b)) return;
@@ -156,7 +215,7 @@ function handle(c, m) {
       if (!adm) return bad(c, m, 'Yetkin yok.');
       S.name = str(m.name, 60); S.desc = str(m.desc, 300); S.max = Math.min(Math.max(+m.max || S.max, 1), 100); S.logo = str(m.logo, 20000);
       mark('servers'); bc(h, { t: 'meta', info: infoOf(S, me.id) });
-      return ok(c, m, { info: infoOf(S, me.id) });
+      return ok(c, m, { info: infoOf(S, me.id), bk: bkOf(S) });
     case 'srv.delete':
       if (!own) return bad(c, m, 'Sadece sahip silebilir.');
       bc(h, { t: 'closed' }, me.id);
@@ -202,6 +261,7 @@ function accept(req, socket) {
     if (!socket.destroyed) socket.write(Buffer.concat([hd, buf]));
   };
   c.sendText = s => c.sendFrame(1, Buffer.from(s));
+  c.sendText(JSON.stringify({ t: 'ver', v: BUILD }));
   let buf = Buffer.alloc(0), frag = [], fragLen = 0;
   const close = () => { if (!c.open) return; c.open = false; leaveRoom(c); try { socket.destroy(); } catch (e) {} };
   socket.on('data', d => {
@@ -242,7 +302,9 @@ const server = http.createServer((req, res) => {
   fs.readFile(f, (e, d) => {
     if (e) { res.writeHead(404); return res.end('404'); }
     const ext = path.extname(f), types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
-    res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' }); res.end(d);
+    let body = d;
+    if (ext === '.html') body = Buffer.from(d.toString('utf8').replace('</head>', '<meta name="build" content="' + BUILD + '"></head>'));
+    res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache' }); res.end(body);
   });
 });
 server.on('upgrade', (req, socket) => { if (req.url.split('?')[0] !== '/ws') return socket.destroy(); accept(req, socket); });

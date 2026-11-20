@@ -4442,8 +4442,9 @@ function rawReq(t,d){
 function req(t,d){
   return netConnect().then(function(){
     if(!NET.authed&&NET.token&&t!=='reg'&&t!=='login'&&t!=='resume'){
-      return rawReq('resume',{token:NET.token}).then(function(){NET.authed=true;},function(e){NET.token='';store.del('kd_token');throw e;});
+      return preRestore().then(function(){return rawReq('resume',{token:NET.token});}).then(function(){NET.authed=true;syncBack();},function(e){NET.token='';store.del('kd_token');throw e;});
     }
+    if(t==='login'){var a0=jget('kd_acct',null);if(a0&&d&&a0.email===String(d.email||'').toLowerCase())return preRestore();}
   }).then(function(){return rawReq(t,d);});
 }
 function netSend(t,d){
@@ -4451,12 +4452,59 @@ function netSend(t,d){
   var o={t:t};for(var k in d)o[k]=d[k];
   try{NET.ws.send(JSON.stringify(o));}catch(e){}
 }
+/* ---------- Otomatik sürüm kontrolü ---------- */
+var buildPending=false;
+function checkBuild(v){
+  var mt=document.querySelector('meta[name="build"]');
+  if(!mt||!v||v==='0'||mt.content===v||buildPending)return;
+  buildPending=true;
+  if(state==='playing')toast('Yeni sürüm var. Menüye dönünce otomatik güncellenecek.');
+  var iv=setInterval(function(){if(state!=='playing'){clearInterval(iv);doUpdate();}},1000);
+}
+function doUpdate(){
+  try{bkSave();}catch(e){}
+  var o=document.createElement('div');
+  o.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:rgba(0,0,0,.92);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font:600 20px/1.4 system-ui,sans-serif;text-align:center;padding:20px';
+  o.innerHTML='<div style="width:46px;height:46px;border:5px solid #555;border-top-color:#fff;border-radius:50%;animation:updspin 1s linear infinite;margin-bottom:18px"></div><div>Oyun güncelleniyor,<br>lütfen bekleyin…</div><style>@keyframes updspin{to{transform:rotate(360deg)}}</style>';
+  document.body.appendChild(o);
+  setTimeout(function(){location.reload();},1200);
+}
+/* ---------- Yerel yedek: hesap, sunucu listesi, sunucu bilgisi ve dünya düzenlemeleri ---------- */
+var bkDirty=false;
+function lsGet(){return jget('kd_lists_'+pid,[]);}
+function lsAdd(h){if(!pid||!h)return;var L=lsGet();if(L.indexOf(h)<0){L.push(h);jset('kd_lists_'+pid,L);}}
+function lsDel(h){if(!pid)return;jset('kd_lists_'+pid,lsGet().filter(function(x){return x!==h;}));store.del('kd_bkm_'+h);store.del('kd_bke_'+h);}
+function bkMeta(h,b){if(b&&b.owner&&b.owner.id===pid)jset('kd_bkm_'+h,b);}
+function bkSave(){
+  if(!curSrv||!pid)return;
+  var n=0;for(var k in edits){n=1;break;}
+  if(!n)return;
+  var s;try{s=JSON.stringify(edits);}catch(e){return;}
+  if(s.length>3000000)return;
+  store.set('kd_bke_'+curSrv,s);bkDirty=false;
+}
+setInterval(function(){if(bkDirty)bkSave();},8000);
+window.addEventListener('pagehide',function(){if(bkDirty)bkSave();});
+function preRestore(){var a=jget('kd_acct',null);return a?rawReq('restore',{acct:a}).then(function(){},function(){}):Promise.resolve();}
+function syncHost(h){
+  var mt=jget('kd_bkm_'+h,null),es=store.get('kd_bke_'+h);
+  if(!mt&&!es)return Promise.resolve();
+  var ed=null;if(es&&es.length<3000000){try{ed=JSON.parse(es);}catch(e){}}
+  return req('sync.srv',{host:h,meta:mt,edits:ed}).then(function(){},function(){});
+}
+function syncBack(){
+  if(!pid)return Promise.resolve();
+  var L=lsGet().slice(0,100),p=Promise.resolve();
+  L.forEach(function(x){p=p.then(function(){return syncHost(x);});});
+  return p.then(function(){return req('sync.lists',{lists:L});}).then(function(){},function(){});
+}
 function netMsg(e){
   var m;try{m=JSON.parse(e.data);}catch(x){return;}
+  if(m.t==='ver'){checkBuild(m.v);return;}
   if(m.id!==undefined&&NET.reqs[m.id]){var r=NET.reqs[m.id];delete NET.reqs[m.id];if(m.ok)r.res(m);else r.rej(new Error(m.err||'Hata.'));return;}
   netEvent(m);
 }
-function netPush(k,i,v){netQ.push([k,i,v]);}
+function netPush(k,i,v){netQ.push([k,i,v]);bkDirty=true;}
 function flushNet(){if(NETG&&netQ.length)netSend('blk',{b:netQ.splice(0,1000)});}
 setInterval(flushNet,100);
 var lastPS=0,lastPX=0,lastPZ=0,lastPY=0,lastPYaw=0;
@@ -4482,7 +4530,7 @@ function netEvent(m){
 }
 function netBlock(k,i,v){
   var m=/^([EN]?)(-?\d+),(-?\d+)$/.exec(k);if(!m)return;
-  (edits[k]||(edits[k]={}))[i]=v;
+  (edits[k]||(edits[k]={}))[i]=v;bkDirty=true;
   var pre=dim===2?'E':dim?'N':'';if(m[1]!==pre)return;
   var cx=+m[2],cz=+m[3],ch=chunks.get(key(cx,cz));if(!ch)return;
   ch.d[i]=v;ch.edited=true;
@@ -4610,7 +4658,8 @@ $('aTabR').addEventListener('click',function(){setAuthTab('reg');});
 function loginOk(r){
   pid=r.me.id;pname=r.me.name;NET.token=r.token;NET.authed=true;store.set('kd_token',r.token);
   $('aPass').value=$('aPass2').value='';authErr('');
-  setNick();show('title');toast('Hoş geldin, '+pname+'!');
+  if(r.acct)jset('kd_acct',r.acct);
+  setNick();show('title');toast('Hoş geldin, '+pname+'!');syncBack();
 }
 function doAuth(){
   if(authBusy)return;
@@ -4644,7 +4693,7 @@ function startup(){
   $('aUrl').value=netUrl();setAuthTab('login');show('auth');
   if(!NET.token)return;
   authErr('Sunucuya bağlanılıyor…');
-  netConnect().then(function(){return rawReq('resume',{token:NET.token});}).then(loginOk,function(e){
+  netConnect().then(function(){return preRestore();}).then(function(){return rawReq('resume',{token:NET.token});}).then(loginOk,function(e){
     authErr(e.message);
     if(/Oturum/.test(e.message)){NET.token='';store.del('kd_token');}
   });
@@ -4694,7 +4743,7 @@ function renderServers(){
   drawServers();
   if(srvBusy)return;srvBusy=true;
   req('srv.list').then(function(r){
-    SVL=r.list;SVM={};r.list.forEach(function(i){if(!i.missing)SVM[i.host]=i;});srvErr='';
+    SVL=r.list;SVM={};r.list.forEach(function(i){lsAdd(i.host);if(!i.missing){SVM[i.host]=i;bkMeta(i.host,i.bk);}});srvErr='';
   },function(e){srvErr=e.message;}).then(function(){srvBusy=false;if(curScreen==='servers')drawServers();});
 }
 setInterval(function(){if(curScreen==='servers'&&dlg.hidden)renderServers();},5000);
@@ -4711,11 +4760,11 @@ $('sDel').addEventListener('click',function(){
   var h=srvSel;if(!h)return;var s=SVM[h];
   if(isOwnerI(s)){
     ask('Sunucuyu sil','"'+stripCodes(s.name)+'" ve dünyası kalıcı olarak silinecek.',null,'Sil',function(){
-      req('srv.delete',{host:h}).then(function(){toast('Sunucu silindi.');renderServers();},function(e){toast(e.message);});
+      req('srv.delete',{host:h}).then(function(){lsDel(h);toast('Sunucu silindi.');renderServers();},function(e){toast(e.message);});
     });
   }else{
     ask('Listeden kaldır',h+' listenden kaldırılacak.',null,'Kaldır',function(){
-      req('srv.remove',{host:h}).then(function(){renderServers();},function(e){toast(e.message);});
+      req('srv.remove',{host:h}).then(function(){lsDel(h);renderServers();},function(e){toast(e.message);});
     });
   }
 });
@@ -4735,7 +4784,7 @@ $('saIp').addEventListener('keydown',function(e){if(e.key==='Enter')findSrv();})
 $('saBack').addEventListener('click',function(){show('servers');});
 $('saOk').addEventListener('click',function(){
   if(!addFound)return;var h=addFound;
-  req('srv.add',{host:h}).then(function(){srvSel=h;show('servers');toast('Sunucu eklendi.');},function(e){toast(e.message);});
+  req('srv.add',{host:h}).then(function(){lsAdd(h);srvSel=h;show('servers');toast('Sunucu eklendi.');},function(e){toast(e.message);});
 });
 
 /* ---------- Oluştur / Yönet formu ---------- */
@@ -4851,7 +4900,7 @@ $('sfGo').addEventListener('click',function(){
   if(fMode==='edit'){
     var h=fHost;
     req('srv.edit',{host:h,name:name,desc:desc,max:max,logo:fLogo||defLogo()}).then(function(r){
-      SVM[h]=r.info;toast('Sunucu kaydedildi.');if(curSrv===h)updTag();renderPlayers(h);
+      SVM[h]=r.info;bkMeta(h,r.bk);toast('Sunucu kaydedildi.');if(curSrv===h)updTag();renderPlayers(h);
     },function(e){toast(e.message);}).then(fin);
     return;
   }
@@ -4860,7 +4909,7 @@ $('sfGo').addEventListener('click',function(){
   var txt=$('sfSeed').value.trim(),sd=seedFrom(txt);
   if(sd===null){sd=(Math.random()*1e9)|0;txt=String(sd);}
   req('srv.create',{label:r.label,name:name,desc:desc,logo:fLogo||defLogo(),max:max,mode:sMode,type:sType,seed:sd,seedText:txt}).then(function(x){
-    srvSel=x.info.host;show('servers');toast('Sunucu açıldı: '+x.info.host);
+    lsAdd(x.info.host);bkMeta(x.info.host,x.bk);srvSel=x.info.host;show('servers');toast('Sunucu açıldı: '+x.info.host);
   },function(e){toast(e.message);}).then(fin);
 });
 function renderPlayers(h){
@@ -4918,16 +4967,19 @@ function updTag(){
 }
 function leaveSrv(){
   if(!curSrv)return;
-  flushNet();curSrv=null;NETG=false;netQ.length=0;
+  bkSave();flushNet();curSrv=null;NETG=false;netQ.length=0;
   netSend('leave');clearRemotes();updTag();
 }
 function joinSrv(h){
   if(joining)return;joining=true;toast('Sunucuya bağlanılıyor…');
-  req('join',{host:h}).then(function(r){
+  syncHost(h).then(function(){return req('join',{host:h});}).then(function(r){
     var wid='sv_'+h+'_'+pid,ps=r.pos;
+    lsAdd(h);bkMeta(h,r.bk);
+    try{var es=JSON.stringify(r.edits||{});if(es.length<3000000)store.set('kd_bke_'+h,es);}catch(e){}
+    var pk={};for(var ck in r.edits){var a=[],mm=r.edits[ck];for(var ci in mm)a.push(+ci,mm[ci]);if(a.length)pk[ck]=a;}
     var w={id:wid,name:stripCodes(r.info.name),seedText:r.world.seedText||String(r.world.seed),seed:r.world.seed,type:r.world.type,mode:r.world.mode,keep:false,created:Date.now(),played:Date.now(),
       pos:ps?{x:ps.x,y:ps.y,z:ps.z,yaw:ps.yaw,pitch:ps.pitch}:null,dim:ps?ps.dim:0,tod:.08,fly:false,net:h};
-    jset('kd_w_'+wid,r.edits);
+    jset('kd_w_'+wid,pk);
     clearRemotes();netQ.length=0;
     curSrv=h;joinAt=Date.now();SVM[h]=r.info;
     r.players.forEach(rpAdd);
