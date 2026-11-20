@@ -4417,7 +4417,7 @@ function netConnect(){
   NET.connecting=new Promise(function(res,rej){
     var ws,opened=false,url=netUrl();
     try{ws=new WebSocket(url);}catch(e){NET.connecting=null;rej(new Error('Sunucu adresi geçersiz.'));return;}
-    var t=setTimeout(function(){if(!opened){try{ws.close();}catch(e){}}},8000);
+    var t=setTimeout(function(){if(!opened){try{ws.close();}catch(e){}}},25000);
     ws.onopen=function(){opened=true;clearTimeout(t);NET.ws=ws;NET.authed=false;NET.connecting=null;res();};
     ws.onmessage=netMsg;
     ws.onerror=function(){};
@@ -4473,15 +4473,23 @@ function doUpdate(){
 var bkDirty=false;
 function lsGet(){return jget('kd_lists_'+pid,[]);}
 function lsAdd(h){if(!pid||!h)return;var L=lsGet();if(L.indexOf(h)<0){L.push(h);jset('kd_lists_'+pid,L);}}
-function lsDel(h){if(!pid)return;jset('kd_lists_'+pid,lsGet().filter(function(x){return x!==h;}));store.del('kd_bkm_'+h);store.del('kd_bke_'+h);}
-function bkMeta(h,b){if(b&&b.owner&&b.owner.id===pid)jset('kd_bkm_'+h,b);}
+function lsDel(h){if(!pid)return;jset('kd_lists_'+pid,lsGet().filter(function(x){return x!==h;}));store.del('kd_bkm_'+h);store.del('kd_bke_'+h);store.del('kd_bkq_'+h);}
+function bkMeta(h,b){if(b&&b.owner&&b.owner.id)jset('kd_bkm_'+h,b);}
+var bkBase=null,bkBaseH='',pendSaved=false;
+function bkLoad(h){
+  bkBaseH=h;bkBase={};
+  var s=store.get('kd_bke_'+h);
+  if(s&&s.length<4000000){try{bkBase=JSON.parse(s)||{};}catch(e){bkBase={};}}
+}
 function bkSave(){
   if(!curSrv||!pid)return;
-  var n=0;for(var k in edits){n=1;break;}
-  if(!n)return;
-  var s;try{s=JSON.stringify(edits);}catch(e){return;}
-  if(s.length>3000000)return;
-  store.set('kd_bke_'+curSrv,s);bkDirty=false;
+  if(bkBaseH!==curSrv||!bkBase)bkLoad(curSrv);
+  var k,i,m,d,n=0;
+  for(k in edits){m=edits[k];d=bkBase[k]||(bkBase[k]={});for(i in m){d[i]=m[i];n++;}}
+  if(n){var s;try{s=JSON.stringify(bkBase);}catch(e){s=null;}if(s&&s.length<4000000)store.set('kd_bke_'+curSrv,s);}
+  if(netQ.length){try{store.set('kd_bkq_'+curSrv,JSON.stringify(netQ.slice(0,100000)));pendSaved=true;}catch(e){}}
+  else if(pendSaved){store.del('kd_bkq_'+curSrv);pendSaved=false;}
+  bkDirty=false;
 }
 setInterval(function(){if(bkDirty)bkSave();},8000);
 window.addEventListener('pagehide',function(){if(bkDirty)bkSave();});
@@ -4505,7 +4513,11 @@ function netMsg(e){
   netEvent(m);
 }
 function netPush(k,i,v){netQ.push([k,i,v]);bkDirty=true;}
-function flushNet(){if(NETG&&netQ.length)netSend('blk',{b:netQ.splice(0,1000)});}
+function flushNet(all){
+  if(!NETG||!netQ.length||!NET.ws||NET.ws.readyState!==1)return;
+  do{netSend('blk',{b:netQ.splice(0,1000)});}while(all&&netQ.length);
+  if(!netQ.length&&pendSaved&&curSrv){store.del('kd_bkq_'+curSrv);pendSaved=false;}
+}
 setInterval(flushNet,100);
 var lastPS=0,lastPX=0,lastPZ=0,lastPY=0,lastPYaw=0;
 setInterval(function(){
@@ -4967,7 +4979,7 @@ function updTag(){
 }
 function leaveSrv(){
   if(!curSrv)return;
-  bkSave();flushNet();curSrv=null;NETG=false;netQ.length=0;
+  flushNet(true);bkSave();curSrv=null;NETG=false;netQ.length=0;
   netSend('leave');clearRemotes();updTag();
 }
 function joinSrv(h){
@@ -4975,8 +4987,19 @@ function joinSrv(h){
   syncHost(h).then(function(){return req('join',{host:h});}).then(function(r){
     var wid='sv_'+h+'_'+pid,ps=r.pos;
     lsAdd(h);bkMeta(h,r.bk);
-    try{var es=JSON.stringify(r.edits||{});if(es.length<3000000)store.set('kd_bke_'+h,es);}catch(e){}
-    var pk={};for(var ck in r.edits){var a=[],mm=r.edits[ck];for(var ci in mm)a.push(+ci,mm[ci]);if(a.length)pk[ck]=a;}
+    bkLoad(h);pendSaved=false;
+    var srvE=r.edits||{},miss=[],pend=[],k,i,m,d;
+    /* Telefon yedeğinde olup sunucuda olmayan bloklar (sunucu sıfırlandıysa) geri yüklenir */
+    for(k in bkBase){m=bkBase[k];for(i in m){if(!srvE[k]||srvE[k][i]===undefined){(srvE[k]||(srvE[k]={}))[i]=m[i];miss.push([k,+i,m[i]]);}}}
+    /* Önceki oturumda sunucuya ulaşamayan blok değişiklikleri yeniden uygulanır */
+    try{
+      var pq=JSON.parse(store.get('kd_bkq_'+h)||'[]');
+      if(Array.isArray(pq))pq.forEach(function(q){if(Array.isArray(q)&&typeof q[0]==='string'&&/^[EN]?-?\d+,-?\d+$/.test(q[0])&&Number.isInteger(q[1])&&Number.isInteger(q[2])){(srvE[q[0]]||(srvE[q[0]]={}))[q[1]]=q[2];pend.push(q);}});
+    }catch(e){}
+    store.del('kd_bkq_'+h);
+    for(k in srvE){m=srvE[k];d=bkBase[k]||(bkBase[k]={});for(i in m)d[i]=m[i];}
+    try{var es=JSON.stringify(bkBase);if(es.length<4000000)store.set('kd_bke_'+h,es);}catch(e){}
+    var pk={};for(var ck in srvE){var a=[],mm=srvE[ck];for(var ci in mm)a.push(+ci,mm[ci]);if(a.length)pk[ck]=a;}
     var w={id:wid,name:stripCodes(r.info.name),seedText:r.world.seedText||String(r.world.seed),seed:r.world.seed,type:r.world.type,mode:r.world.mode,keep:false,created:Date.now(),played:Date.now(),
       pos:ps?{x:ps.x,y:ps.y,z:ps.z,yaw:ps.yaw,pitch:ps.pitch}:null,dim:ps?ps.dim:0,tod:.08,fly:false,net:h};
     jset('kd_w_'+wid,pk);
@@ -4984,6 +5007,7 @@ function joinSrv(h){
     curSrv=h;joinAt=Date.now();SVM[h]=r.info;
     r.players.forEach(rpAdd);
     startWorld(w);NETG=true;
+    pend.concat(miss).forEach(function(q){netQ.push(q);});if(netQ.length)bkDirty=true;
     store.del('kd_w_'+wid);
     updTag();
   },function(e){toast(e.message);}).then(function(){joining=false;});

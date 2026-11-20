@@ -149,17 +149,23 @@ function handle(c, m) {
     case 'sync.srv': {
       if (!/^\S{1,40}\.küp\.me$/.test(h)) return bad(c, m, 'Geçersiz adres.');
       let S3 = S; const mt = m.meta;
-      if (!S3 && mt && typeof mt === 'object' && mt.owner && mt.owner.id === me.id && str(mt.host, 80).toLowerCase() === h) {
-        S3 = SERVERS[h] = { host: h, name: str(mt.name, 60), desc: str(mt.desc, 300), logo: str(mt.logo, 20000), max: clampN(mt.max || 10, 1, 100),
-          mode: str(mt.mode, 20), type: str(mt.type, 20), seed: typeof mt.seed === 'number' && isFinite(mt.seed) ? mt.seed : 0, seedText: str(mt.seedText, 60),
-          owner: { id: me.id, name: me.name }, players: {}, edits: {} };
-        S3.players[me.id] = { name: me.name, role: 'owner' };
-        mark('servers');
-        if (!myList().includes(h)) { myList().push(h); mark('lists'); }
+      // Sunucu dosyası silinmişse (ücretsiz barındırma), HERHANGİ bir oyuncunun telefonundaki bilgiyle yeniden kurulur.
+      if (!S3 && mt && typeof mt === 'object' && mt.owner && typeof mt.owner === 'object' && str(mt.host, 80).toLowerCase() === h) {
+        const oid = str(mt.owner.id, 40);
+        if (/^u[0-9a-z]{10,30}$/.test(oid)) {
+          const oname = oid === me.id ? me.name : (str(mt.owner.name, 20) || 'Sahip');
+          S3 = SERVERS[h] = { host: h, name: str(mt.name, 60), desc: str(mt.desc, 300), logo: str(mt.logo, 20000), max: clampN(mt.max || 10, 1, 100),
+            mode: str(mt.mode, 20), type: str(mt.type, 20), seed: typeof mt.seed === 'number' && isFinite(mt.seed) ? mt.seed : 0, seedText: str(mt.seedText, 60),
+            owner: { id: oid, name: oname }, players: {}, edits: {} };
+          S3.players[oid] = { name: oname, role: 'owner' };
+          mark('servers');
+          if (oid === me.id && !myList().includes(h)) { myList().push(h); mark('lists'); }
+        }
       }
       if (!S3) return ok(c, m, { restored: false });
+      // Yasaklı olmayan her hesap, kendi telefonundaki blokları geri yükleyebilir (sadece boş yerler doldurulur, var olan bloğun üstüne yazılmaz).
       const pl = S3.players[me.id];
-      if (pl && !pl.ban && mergeEdits(S3, m.edits)) mark('servers');
+      if (!(pl && pl.ban) && mergeEdits(S3, m.edits)) mark('servers');
       return ok(c, m, { restored: true });
     }
     case 'sync.lists': {
