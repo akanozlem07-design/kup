@@ -618,6 +618,7 @@ var BIOMES=[
   {id:'savanna',name:'Savana'}
 ];
 function getBiome(x,z){
+  if(dim===2)return {id:'the_end',name:'End'};
   if(dim>=1)return nBiome(x,z);
   if(wtype==='flat')return BIOMES[0];
   var temp=fbm(x/480,z/480,seed+101);
@@ -3936,6 +3937,7 @@ function enterEnd(){
   toast('End\'e girdin! Ejderhayı yen.');saveGame();
 }
 function leaveEnd(){
+  saveGame();
   hideEndCrystals();
   setDim(0);spawn();P.vx=P.vy=P.vz=0;P.kx=P.kz=0;peak=P.y;portalLock=true;portalT=0;
   toast('Üst dünyaya döndün.');saveGame();
