@@ -1590,7 +1590,7 @@ function checkEndPortal(x,y,z){
 function genChunk(cx,cz){
   if(dim===2)return genEnd(cx,cz);
   if(dim===1)return genNether(cx,cz);
-  var d=genOver(cx,cz);stampStronghold(d,cx,cz);return d;
+  var d=genOver(cx,cz);stampStronghold(d,cx,cz);var ed0=edits[ekey(cx,cz)];if(ed0){for(var q0 in ed0)d[+q0]=ed0[q0];}return d;
 }
 function genEnd(cx,cz){
   var d=new Uint8Array(CS*H*CS),bx=cx<<4,bz=cz<<4,x,z,y,k;
@@ -1609,6 +1609,8 @@ function genEnd(cx,cz){
     var a=k*Math.PI/4,px=Math.round(8+Math.cos(a)*26),pz=Math.round(8+Math.sin(a)*26),ph=78+((k*7)%5)*5;
     for(z=0;z<CS;z++)for(x=0;x<CS;x++){var ex=bx+x-px,ez=bz+z-pz;if(ex*ex+ez*ez<=5)for(y=60;y<=ph;y++)d[(((y<<4)+z)<<4)+x]=142;}
   }
+  var ed=edits[ekey(cx,cz)];
+  if(ed){for(var q in ed)d[+q]=ed[q];}
   return d;
 }
 
