@@ -18,12 +18,13 @@ function loadJSON(f, d) { try { return JSON.parse(fs.readFileSync(path.join(DATA
 const ACC = loadJSON('accounts.json', {});      // email -> {id,name,salt,hash}
 const LISTS = loadJSON('lists.json', {});       // userId -> [host,...]
 const SERVERS = loadJSON('servers.json', {});   // host -> S
+const DELETED = loadJSON('deleted.json', {});   // host -> silinme zamanı (telefon yedeğinden yeniden doğmasın)
 const dirty = new Set();
 let saveT = null;
 function mark(n) { dirty.add(n); if (!saveT) saveT = setTimeout(flush, 2000); }
 function flush() {
   saveT = null;
-  const map = { accounts: ['accounts.json', ACC], lists: ['lists.json', LISTS], servers: ['servers.json', SERVERS] };
+  const map = { accounts: ['accounts.json', ACC], lists: ['lists.json', LISTS], servers: ['servers.json', SERVERS], deleted: ['deleted.json', DELETED] };
   for (const n of dirty) {
     const [f, obj] = map[n], tmp = path.join(DATA_DIR, f + '.tmp');
     try { fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, path.join(DATA_DIR, f)); } catch (e) { console.error('kayıt hatası', e.message); }
@@ -49,10 +50,12 @@ function infoOf(S, id) {
     owner: S.owner.name, online: online(S.host), role: S.owner.id === id ? 'owner' : (p.role || 'member') };
 }
 const newTok = () => crypto.randomBytes(16).toString('hex');
+let genFix = false; for (const k in SERVERS) if (!SERVERS[k].gen) { SERVERS[k].gen = newTok(); genFix = true; }
+if (genFix) mark('servers');
 const clampN = (v, a, b) => Math.min(Math.max(+v || a, a), b);
 function bkOf(S) {
   return { host: S.host, name: S.name, desc: S.desc, logo: S.logo, max: S.max, mode: S.mode, type: S.type,
-    seed: S.seed, seedText: S.seedText, owner: { id: S.owner.id, name: S.owner.name } };
+    seed: S.seed, seedText: S.seedText, gen: S.gen, owner: { id: S.owner.id, name: S.owner.name } };
 }
 function mergeEdits(S, edits) {
   if (!edits || typeof edits !== 'object') return 0;
@@ -141,14 +144,16 @@ function handle(c, m) {
       if (myList().filter(x => SERVERS[x] && SERVERS[x].owner.id === me.id).length >= 5) return bad(c, m, 'En fazla 5 sunucu açabilirsin.');
       const S2 = SERVERS[host] = { host, name: str(m.name, 60), desc: str(m.desc, 300), logo: str(m.logo, 20000), max: Math.min(Math.max(+m.max || 10, 1), 100),
         mode: str(m.mode, 20), type: str(m.type, 20), seed: m.seed, seedText: str(m.seedText, 60),
-        owner: { id: me.id, name: me.name }, players: {}, edits: {} };
+        owner: { id: me.id, name: me.name }, players: {}, edits: {}, gen: newTok() };
+      if (DELETED[host]) { delete DELETED[host]; mark('deleted'); }
       S2.players[me.id] = { name: me.name, role: 'owner' };
       myList().push(host); mark('servers'); mark('lists');
       return ok(c, m, { info: infoOf(S2, me.id), bk: bkOf(S2) });
     }
     case 'sync.srv': {
       if (!/^\S{1,40}\.küp\.me$/.test(h)) return bad(c, m, 'Geçersiz adres.');
-      let S3 = S; const mt = m.meta;
+      if (DELETED[h]) return ok(c, m, { deleted: true });
+      let S3 = S; const mt = m.meta; let rebuilt = false;
       // Sunucu dosyası silinmişse (ücretsiz barındırma), HERHANGİ bir oyuncunun telefonundaki bilgiyle yeniden kurulur.
       if (!S3 && mt && typeof mt === 'object' && mt.owner && typeof mt.owner === 'object' && str(mt.host, 80).toLowerCase() === h) {
         const oid = str(mt.owner.id, 40);
@@ -156,7 +161,8 @@ function handle(c, m) {
           const oname = oid === me.id ? me.name : (str(mt.owner.name, 20) || 'Sahip');
           S3 = SERVERS[h] = { host: h, name: str(mt.name, 60), desc: str(mt.desc, 300), logo: str(mt.logo, 20000), max: clampN(mt.max || 10, 1, 100),
             mode: str(mt.mode, 20), type: str(mt.type, 20), seed: typeof mt.seed === 'number' && isFinite(mt.seed) ? mt.seed : 0, seedText: str(mt.seedText, 60),
-            owner: { id: oid, name: oname }, players: {}, edits: {} };
+            owner: { id: oid, name: oname }, players: {}, edits: {}, gen: str(mt.gen, 40) || newTok() };
+          rebuilt = true;
           S3.players[oid] = { name: oname, role: 'owner' };
           mark('servers');
           if (oid === me.id && !myList().includes(h)) { myList().push(h); mark('lists'); }
@@ -165,6 +171,8 @@ function handle(c, m) {
       if (!S3) return ok(c, m, { restored: false });
       // Yasaklı olmayan her hesap, kendi telefonundaki blokları geri yükleyebilir (sadece boş yerler doldurulur, var olan bloğun üstüne yazılmaz).
       const pl = S3.players[me.id];
+      // Telefondaki yedek başka bir 'nesil'e (silinip yeniden açılmış sunucuya) aitse yüklenmez.
+      if (!rebuilt && S3.gen && m.gen && m.gen !== S3.gen) return ok(c, m, { stale: true });
       if (!(pl && pl.ban) && mergeEdits(S3, m.edits)) mark('servers');
       return ok(c, m, { restored: true });
     }
@@ -189,7 +197,7 @@ function handle(c, m) {
       if (!myList().includes(h)) { myList().push(h); mark('lists'); }
       const others = [...r].filter(x => x !== c).map(x => Object.assign({ id: x.me.id, name: x.me.name }, P[x.me.id].pos || DEFPOS()));
       mark('servers');
-      return ok(c, m, { info: infoOf(S, me.id), bk: bkOf(S), world: { seed: S.seed, seedText: S.seedText, type: S.type, mode: S.mode }, edits: S.edits, players: others, pos: P[me.id].pos || null });
+      return ok(c, m, { info: infoOf(S, me.id), bk: bkOf(S), world: { seed: S.seed, seedText: S.seedText, type: S.type, mode: S.mode }, gen: S.gen, edits: S.edits, players: others, pos: P[me.id].pos || null });
     }
     case 'blk': {
       const s = SERVERS[c.cur]; if (!s || !Array.isArray(m.b)) return;
@@ -233,6 +241,10 @@ function handle(c, m) {
       bc(h, { t: 'closed' }, me.id);
       for (const o of [...online_set(h)]) o.cur = null;
       delete ROOMS[h]; delete SERVERS[h]; mark('servers');
+      DELETED[h] = Date.now(); mark('deleted');
+      for (const u in LISTS) if (LISTS[u].includes(h)) LISTS[u] = LISTS[u].filter(x => x !== h);
+      mark('lists');
+      flush();
       return ok(c, m);
     case 'srv.admin': case 'srv.adminByName': {
       if (!own) return bad(c, m, 'Sadece sahip yetki verebilir.');

@@ -759,7 +759,8 @@ var B={
   190:{name:'Yosunlu Taş Tuğla',t:108,s:108,b:108,hard:1.8,tool:'pick',minTier:1},
   191:{name:'Çatlak Taş Tuğla',t:109,s:109,b:109,hard:1.8,tool:'pick',minTier:1},
   192:{name:'Kitaplık',t:8,s:110,b:8,hard:1.2,tool:'axe'},
-  194:{name:'Ejderha Yumurtası',t:111,s:111,b:111,hard:3.0,tool:'any'},
+  194:{name:'Ejderha Yumurtası',t:112,s:112,b:112,hard:999,tool:'pick',minTier:99,egg:true},
+  300:{name:'Meşale',t:113,s:113,b:113,hard:0.05,tool:'any',plant:true,torch:true},
   76:{name:'Ana Kaya',t:48,s:48,b:48,hard:999,tool:'pick',minTier:99},
   77:{name:'Bakır Cevheri',t:49,s:49,b:49,hard:3.0,tool:'pick',minTier:2},
   78:{name:'Kızıltaş Cevheri',t:50,s:50,b:50,hard:3.4,tool:'pick',minTier:3,drop:82},
@@ -1215,6 +1216,24 @@ tpaint(46,function(x,y,r){
     var cols=[[150,40,40],[40,70,150],[60,130,60],[170,140,40],[110,60,140]];
     var c=cols[(x+(y>8?2:0))%5];if(x%3===2)c=shade(c,-40);return nzc(c,6,r);});
   tpaint(111,function(x,y,r){if(r()<.1)return [150,60,200];return nzc([14,6,22],5,r);});
+  /* 112: Ejderha Yumurtası (yumurta biçimli, saydam kenarlı) */
+  tpaint(112,function(x,y,r){
+    var ny=(y-8.6)/6.6,sc=1-.24*Math.max(0,-ny),rx=5.0*sc,dx=(x-7.5)/rx;
+    if(dx*dx+ny*ny>1)return [0,0,0,0];
+    if(dx*dx+ny*ny>.78)return [58,24,92,255];
+    if((x===5||x===6)&&(y===5||y===6))return [210,170,255,255];
+    if(r()<.13)return [156,64,210,255];
+    return nzc([16,7,26],6,r);
+  });
+  /* 113: Meşale */
+  tpaint(113,function(x,y,r){
+    if(x>=7&&x<=8&&y>=6&&y<=15)return nzc(y>11?[112,80,44]:[150,108,58],8,r).concat([255]);
+    if(x>=6&&x<=9&&y>=2&&y<=5){
+      if((x===6||x===9)&&(y===2||y===5))return [0,0,0,0];
+      return (y<=3)?[255,236,110,255]:[255,150,40,255];
+    }
+    return [0,0,0,0];
+  });
   plankTile(99,[222,214,200]);plankTile(100,[186,104,58]);plankTile(101,[140,48,64]);plankTile(102,[40,120,120]);
   tpaint(103,function(x,y,r){if(x>=4&&x<=11&&y>=4&&y<=11)return nzc([22,44,34],4,r);return nzc([62,100,76],6,r);});
   tpaint(104,function(x,y,r){if(y<5)return nzc([62,100,76],6,r);return nzc([218,216,152],8,r);});
@@ -1593,7 +1612,7 @@ function genChunk(cx,cz){
   var d=genOver(cx,cz);stampStronghold(d,cx,cz);var ed0=edits[ekey(cx,cz)];if(ed0){for(var q0 in ed0)d[+q0]=ed0[q0];}return d;
 }
 function genEnd(cx,cz){
-  var d=new Uint8Array(CS*H*CS),bx=cx<<4,bz=cz<<4,x,z,y,k;
+  var d=new Uint16Array(CS*H*CS),bx=cx<<4,bz=cz<<4,x,z,y,k;
   for(z=0;z<CS;z++)for(x=0;x<CS;x++){
     var wx=bx+x,wz=bz+z,r=Math.hypot(wx-8,wz-8);
     if(r<40){var dep=Math.round((1-r/40)*16+hash2(wx,wz,seed+5000)*2);for(y=64-dep;y<=64;y++)if(y>=1)d[(((y<<4)+z)<<4)+x]=177;}
@@ -1602,7 +1621,7 @@ function genEnd(cx,cz){
     var gx=bx+x,gz=bz+z,dr=Math.hypot(gx-8,gz-8);
     if(dr<3.6)d[(((64<<4)+z)<<4)+x]=76;
     if(dr>=2.5&&dr<3.6){d[(((65<<4)+z)<<4)+x]=76;d[(((66<<4)+z)<<4)+x]=76;}
-    if(gx===8&&gz===8){for(y=65;y<=67;y++)d[(((y<<4)+z)<<4)+x]=76;}
+    if(gx===8&&gz===8){for(y=65;y<=67;y++)d[(((y<<4)+z)<<4)+x]=177;}
     if(gx>=22&&gx<=26&&gz>=6&&gz<=10){d[(((62<<4)+z)<<4)+x]=142;d[(((63<<4)+z)<<4)+x]=142;d[(((64<<4)+z)<<4)+x]=142;}
   }
   for(k=0;k<8;k++){
@@ -1630,7 +1649,7 @@ function putN(d,x,y,z,id,onlyAir){
   if(!onlyAir||d[i]===0)d[i]=id;
 }
 function genNether(cx,cz){
-  var d=new Uint8Array(CS*H*CS),bx=cx<<4,bz=cz<<4,x,y,z,idx,wx,wz;
+  var d=new Uint16Array(CS*H*CS),bx=cx<<4,bz=cz<<4,x,y,z,idx,wx,wz;
   for(z=0;z<CS;z++)for(x=0;x<CS;x++){
     wx=bx+x;wz=bz+z;
     for(y=0;y<=NYMAX;y++){
@@ -1716,7 +1735,7 @@ function genNether(cx,cz){
 function caveLava(wx,y,wz){return y<=OFF-64&&vnoise(wx/30,wz/30,seed+707)>.9;}
 function genOver(cx,cz){
 
-  var d=new Uint8Array(CS*H*CS);
+  var d=new Uint16Array(CS*H*CS);
   var bx=cx<<4,bz=cz<<4;
 
   /* 1. Katman: Zemine Bağlı Arazi + Yeraltı Mağaraları (Havada Uçan Ada Yok) */
@@ -2178,7 +2197,7 @@ function occ(x,y,z){
   var b=getBlock(x,y,z);
   if(!b||b===7||b===24||b===143||b===144||b===184)return 0;
   var bd=B[b];
-  return (bd&&bd.plant)?0:1;
+  return (bd&&(bd.plant||bd.egg||bd.shape))?0:1;
 }
 function disposeMesh(ch){
   if(ch.m1){scene.remove(ch.m1);ch.m1.geometry.dispose();ch.m1=null;}
@@ -2224,7 +2243,7 @@ function buildMesh(ch){
         var bd=B[id];if(!bd)continue;
 
         /* Çiçekler ve Kuru Çalılar için 3B Çapraz (X) Bitki Geometrisi */
-        if(bd.plant){
+        if(bd.plant||bd.egg){
           var ptile=bd.s,pcol=ptile%AT,prow=(ptile/AT)|0;
           var u0=(pcol+EPS)/AT,u1=(pcol+1-EPS)/AT;
           var v0=1-(prow+1-EPS)/AT,v1=1-(prow+EPS)/AT;
@@ -2250,7 +2269,7 @@ function buildMesh(ch){
           var nx=wx+D.n[0],ny=y+D.n[1],nz=wz+D.n[2];
           var nb=getBlock(nx,ny,nz);
           var nbd=nb?B[nb]:null;
-          if(nb!==0 && nb!==7 && nb!==143 && nb!==144 && !(nbd&&nbd.plant) && !((nb===24||nb===184)&&id!==nb))continue;
+          if(nb!==0 && nb!==7 && nb!==143 && nb!==144 && !(nbd&&(nbd.plant||nbd.egg||nbd.shape)) && !((nb===24||nb===184)&&id!==nb))continue;
           var ax=f<2?0:(f<4?1:2),t1=(ax+1)%3,t2=(ax+2)%3,e1=E[t1],e2=E[t2];
           var nv=.93+.14*hash2(wx*7+f,wz*13+y,3);
           var tile=bd.bed?bedTile(bd,f):((f===2)?bd.t:(f===3?bd.b:((f===4&&bd.front!==undefined)?bd.front:bd.s)));
@@ -2823,7 +2842,7 @@ function updateMining(dt){
     mining.prog=0;barWrap.hidden=true;crackMesh.visible=false;return;
   }
   var h=aim();
-  if(!h || h.y<=0 || h.b===76 || h.b===85 || h.b===140){
+  if(!h || h.y<=0 || h.b===76 || h.b===85 || h.b===140 || h.b===194){
     mining.prog=0;barWrap.hidden=true;crackMesh.visible=false;return;
   }
   if(h.x!==mining.x || h.y!==mining.y || h.z!==mining.z){
@@ -2851,6 +2870,25 @@ function updateMining(dt){
   }
 }
 
+function eggTeleport(h){
+  var ox=h.x,oy=h.y,oz=h.z,tr=0;
+  while(tr++<60){
+    var nx=ox+((Math.random()*31)|0)-15,nz=oz+((Math.random()*31)|0)-15,ny=-1;
+    if(Math.abs(nx-ox)+Math.abs(nz-oz)<4)continue;
+    if(dim===2&&Math.hypot(nx-8,nz-8)>36)continue;
+    for(var yy=Math.min(H-4,oy+8);yy>Math.max(2,oy-14);yy--){
+      var bb=getBlock(nx,yy,nz,0);
+      if(bb&&isSolidBlock(bb)&&getBlock(nx,yy+1,nz,0)===0){ny=yy+1;break;}
+    }
+    if(ny<0)continue;
+    spawnBreakParticles(194,ox,oy,oz);
+    _sb(ox,oy,oz,0);_sb(nx,ny,nz,194);
+    spawnBreakParticles(194,nx,ny,nz);
+    playTone(280,.35,'sine',.16,1400);playNoise(.2,2400,.1);buzz();
+    return true;
+  }
+  return false;
+}
 function doPlace(){
   triggerSwing();
   if(tryHit())return;
@@ -2861,6 +2899,7 @@ function doPlace(){
   var h=aim();
   if(!h)return;
   var targetBlock=getBlock(h.x,h.y,h.z,0);
+  if(targetBlock===194){eggTeleport(h);return;}
   if(isBed(targetBlock)){useBed(h);return;}
   if(targetBlock===200){
     var remFruit=addItem(201,1);
@@ -2894,7 +2933,7 @@ function placeBed(x,y,z){
 }
 
 var throwOn=false,throwT=0,thr=[];
-function startMining(){if(!paused&&state==='playing'){var hid=heldItemId();if(hid===100||hid===187||hid===188||hid===195){var ah=hid===187?aim():null;if(!(ah&&getBlock(ah.x,ah.y,ah.z,0)===182)){throwOn=true;throwT=0;triggerSwing();return;}}var hs=surv&&slots[sel]&&ITEMS[slots[sel].id]&&ITEMS[slots[sel].id].kind==='food';if(hs){eatOn=true;eatT=0;return;}mining.active=true;triggerSwing();}}
+function startMining(){if(!paused&&state==='playing'){var hid=heldItemId();if(hid===100||hid===187||hid===188||hid===195){var ah=hid===187?aim():null;if(!(ah&&getBlock(ah.x,ah.y,ah.z,0)===182)){throwOn=true;throwT=0;triggerSwing();return;}}var hs=surv&&slots[sel]&&ITEMS[slots[sel].id]&&ITEMS[slots[sel].id].kind==='food';if(hs){eatOn=true;eatT=0;return;}var eh0=aim();if(eh0&&eh0.b===194){eggTeleport(eh0);triggerSwing();return;}mining.active=true;triggerSwing();}}
 function stopMining(){throwOn=false;throwT=0;mining.active=false;mining.prog=0;eatOn=false;eatT=0;}
 
 /* ---------- Parça Yönetimi ---------- */
@@ -3055,11 +3094,17 @@ hotbar.appendChild(bagEl);
 function icon(el,id){
   el.style.backgroundImage=id?'url('+getIconURL(id)+')':'none';
 }
+function isStackable(id){
+  if(id===194)return false;
+  if(B[id])return true;
+  var it=ITEMS[id];
+  return !(it&&/^(sword|axe|pick|shovel|hoe|shears|bow|lighter|bucket|boat)$/.test(it.kind));
+}
 function refreshHotbar(){
   for(var i=0;i<HOT.length;i++){
     var el=slotEls[i],it=surv?slots[i]:{id:HOT[i],n:0};
     icon(el,it?it.id:0);
-    el.querySelector('i').textContent=(surv&&it&&it.n>1)?it.n:'';
+    el.querySelector('i').textContent=(surv&&it&&it.n>1)?it.n:((!surv&&it&&it.id&&isStackable(it.id))?64:'');
     el.classList.toggle('sel',i===sel);
   }
 }
@@ -3375,6 +3420,8 @@ itemTexCache[201]=makePixelIcon(function(c){
 });
 [[156,158],[160,178],[164,179],[149,180],[150,181]].forEach(function(m){RC.push({sl:[m[0]],r:[m[1],4]});});
 [158,178,179,180,181].forEach(function(P){RC.push({p:[[P],[P]],r:[20,4]});RC.push({p:[[P,P],[P,P]],r:[11,1]});});
+RC.push({p:[[26],[20]],r:[300,4]});
+RECIPE_GUIDE.push({id:300,t:'Meşale (×4)',d:'1 Kömür üstüne 1 Çubuk. Ejderha Yumurtası için: yumurtanın altındaki bloğun hemen altına meşale koy, aradaki bloğu kır. Yumurta düşüp meşaleye değince eşya olur.'});
 RC.push({sl:[185],r:[186,2]});
 RC.push({sl:[186,100],r:[187,1]});
 RECIPE_GUIDE.push({id:158,t:'Yeni Tahtalar (×4)',d:'Kiraz, Solgun Meşe, Akasya, Kızıl ve Mavi Kütük: her biri 1 kütük = 4 tahta. Her tahtadan Çubuk ve Çalışma Masası da yapılır.'});
@@ -3628,7 +3675,7 @@ function useBucket(id){
 
 /* ---------- Kum Düşmesi ---------- */
 var sandQ=[],sandT=0,_sb=setBlock;
-function isSand(b){return b===4||b===49;}
+function isSand(b){return b===4||b===49||b===194;}
 setBlock=function(x,y,z,id){
   var prev=getBlock(x,y,z,0);
   _sb(x,y,z,id);
@@ -3647,6 +3694,11 @@ function stepSand(){
     var b=getBlock(q.x,q.y,q.z,0);
     if(!isSand(b)||q.y<=0)continue;
     var u=getBlock(q.x,q.y-1,q.z,0);
+    if(b===194&&u===300){
+      _sb(q.x,q.y,q.z,0);_sb(q.x,q.y-1,q.z,0);
+      spawnDrop(194,1,q.x+.5,q.y+.2,q.z+.5);spawnBreakParticles(194,q.x,q.y,q.z);sfx.pop();toast('Ejderha yumurtası meşaleye düştü, eşya oldu!');
+      continue;
+    }
     if(u===0||u===7){
       _sb(q.x,q.y-1,q.z,b);_sb(q.x,q.y,q.z,0);
       sandQ.push({x:q.x,y:q.y-1,z:q.z},{x:q.x,y:q.y+1,z:q.z});
@@ -3866,7 +3918,7 @@ function dragonStep(m,dt){
   var tx,ty,tz,sp=9;
   if(m.mode==='c'){
     var a=m.a0+m.stT*.35;tx=8.5+Math.cos(a)*30;tz=8.5+Math.sin(a)*30;ty=82+Math.sin(m.stT)*5;
-    if(m.stT>14){m.mode=(Math.random()<.45&&getBlock(8,68,8,0)===194)?'p':'d';m.stT=0;m.hitD=0;}
+    if(m.stT>14){m.mode=(Math.random()<.45)?'p':'d';m.stT=0;m.hitD=0;}
     m.fc=(m.fc||0)-dt;if(m.fc<=0&&Math.hypot(P.x-m.x,P.z-m.z)<45){m.fc=3.2;shootFB(m,true);}
   }else if(m.mode==='p'){
     tx=8.5;ty=69.8;tz=8.5;sp=8;m.fc=(m.fc||0)-dt;
@@ -3964,7 +4016,7 @@ function crystalTick(dt){
 }
 function tryHitEndCrystal(ex,ey,ez,dx,dy,dz,maxT){
   if(dim!==2||!endCrystals)return null;var best=null,bt=maxT;
-  endCrystals.forEach(function(c){if(!c.alive)return;var cx=c.x-ex,cy=c.y-ey,cz=c.z-ez,t=cx*dx+cy*dy+cz*dz;if(t<.2||t>=bt)return;var px=cx-dx*t,py=cy-dy*t,pz=cz-dz*t;if(Math.hypot(px,py,pz)<.95){best=c;bt=t;}});return best;
+  endCrystals.forEach(function(c){if(!c.alive)return;var cx=c.x-ex,cy=c.y-ey,cz=c.z-ez,t=cx*dx+cy*dy+cz*dz;if(t<.2||t>=bt)return;var px=cx-dx*t,py=cy-dy*t,pz=cz-dz*t;if(Math.hypot(px,py,pz)<1.9){best=c;bt=t;}});return best;
 }
 function enterEnd(){
   saveGame();setDim(2);
@@ -4026,7 +4078,7 @@ function mobStep(m,dt){
   if(m.y<3)mobKill(m,true);
 }
 function updateMobs(dt){
-  if(dim===2&&!dragonDead&&!mobs.some(function(q){return q.t===22;})){drT+=dt;if(drT>2){drT=0;spawnMob(22,8.5,84,8.5);if(getBlock(8,68,8,0)!==194)setBlock(8,68,8,194);toast('Ender Ejderhası uyandı!');}}
+  if(dim===2&&!dragonDead&&!mobs.some(function(q){return q.t===22;})){drT+=dt;if(drT>2){drT=0;spawnMob(22,8.5,84,8.5);toast('Ender Ejderhası uyandı!');}}
   updBoss();
   crystalTick(dt);
   if(dim===2){platT+=dt;if(platT>1){platT=0;endPlatform(false);}}
@@ -4092,7 +4144,7 @@ function tryHit(){
     var px=cx-dx*t,py=cy-dy*t,pz=cz-dz*t;
     if(Math.hypot(px,py,pz)<Math.max(.55,d[2]*.7+.25)){best=m;bt=t;}
   });
-  var crystal=tryHitEndCrystal(ex,ey,ez,dx,dy,dz,bt);
+  var crystal=tryHitEndCrystal(ex,ey,ez,dx,dy,dz,best?bt:6);
   if(crystal){explodeEndCrystal(crystal);return true;}
   if(!best)return false;
   if(best.inv>0)return true;
@@ -4146,8 +4198,8 @@ function creativeTabs(){
     {n:'Yeni Biyom',ids:[156,157,158,160,161,162,164,165,170,171,172,173,176,178,179,180,181,182,183,189,190,191,192,194]},
     {n:'Doğa',ids:[1,2,4,49,46,47,5,43,22,6,44,23,17,53,54,55,67,68,69,7,85]},
     {n:'Cevher',ids:[14,15,51,52,77,78,79,80]},
-    {n:'İşlevsel',ids:[11,12,86,197,198]},
-    {n:'⚔ Saldırı',ids:[36,37,41,64,65,32,33,39,60,61,130,131,132,133,134]},
+    {n:'İşlevsel',ids:[11,12,86,197,198,300]},
+    {n:'⚔ Saldırı',ids:[195,196,36,37,41,64,65,32,33,39,60,61,130,131,132,133,134]},
     {n:'⛏ Aletler',ids:[30,31,38,58,59,34,35,40,62,63,70,71,72,136,137]},
     {n:'🍖 Yiyecek',ids:[21,101,102,103,104,105,106,111,112,113,114,115,116,90,91,94,201]},
     {n:'Malzeme',ids:[20,26,27,56,57,81,82,83,84,92,93,95,96,97,98,99,100,135,185,186,187,188]}
@@ -4797,6 +4849,15 @@ function doUpdate(){
 var bkDirty=false;
 function lsGet(){return jget('kd_lists_'+pid,[]);}
 function lsAdd(h){if(!pid||!h)return;var L=lsGet();if(L.indexOf(h)<0){L.push(h);jset('kd_lists_'+pid,L);}}
+/* Sunucuya ait TÜM yerel veriyi sil (dünya yedeği, envanter, End durumu, nesil) */
+function wipeSrvLocal(h,keepList){
+  if(!h)return;
+  if(!keepList)lsDel(h);
+  ['kd_bkm_','kd_bke_','kd_bkq_','kd_end_','kd_gen_'].forEach(function(p){store.del(p+h);});
+  if(pid){store.del('kd_w_sv_'+h+'_'+pid);store.del('kd_sv_sv_'+h+'_'+pid);}
+  if(bkBaseH===h){bkBase={};}
+  if(curSrv===h)pendSaved=false;
+}
 function lsDel(h){if(!pid)return;jset('kd_lists_'+pid,lsGet().filter(function(x){return x!==h;}));store.del('kd_bkm_'+h);store.del('kd_bke_'+h);store.del('kd_bkq_'+h);}
 function bkMeta(h,b){if(b&&b.owner&&b.owner.id)jset('kd_bkm_'+h,b);}
 var bkBase=null,bkBaseH='',pendSaved=false;
@@ -4822,7 +4883,7 @@ function syncHost(h){
   var mt=jget('kd_bkm_'+h,null),es=store.get('kd_bke_'+h);
   if(!mt&&!es)return Promise.resolve();
   var ed=null;if(es&&es.length<3000000){try{ed=JSON.parse(es);}catch(e){}}
-  return req('sync.srv',{host:h,meta:mt,edits:ed}).then(function(){},function(){});
+  return req('sync.srv',{host:h,meta:mt,edits:ed,gen:store.get('kd_gen_'+h)||undefined}).then(function(r){if(r&&r.deleted)wipeSrvLocal(h);else if(r&&r.stale)wipeSrvLocal(h,true);},function(){});
 }
 function syncBack(){
   if(!pid)return Promise.resolve();
@@ -4859,7 +4920,7 @@ function netEvent(m){
     case 'pm':rpMove(m);break;
     case 'blk':m.b.forEach(function(e){netBlock(e[0],e[1],e[2]);});break;
     case 'kick':toast(m.reason||'Sunucudan atıldın.');exitToMenu();break;
-    case 'closed':toast('Sunucu kapatıldı.');exitToMenu();break;
+    case 'closed':var hh0=curSrv;toast('Sunucu kapatıldı.');exitToMenu();wipeSrvLocal(hh0);break;
     case 'role':if(SVM[curSrv])SVM[curSrv].role=m.role;toast(m.role==='admin'?'Sunucuda yetkili yapıldın!':'Yetkin alındı.');break;
     case 'meta':if(SVM[curSrv]){SVM[curSrv].name=m.info.name;SVM[curSrv].max=m.info.max;}updTag();break;
   }
@@ -5097,7 +5158,7 @@ $('sDel').addEventListener('click',function(){
   var h=srvSel;if(!h)return;var s=SVM[h];
   if(isOwnerI(s)){
     ask('Sunucuyu sil','"'+stripCodes(s.name)+'" ve dünyası kalıcı olarak silinecek.',null,'Sil',function(){
-      req('srv.delete',{host:h}).then(function(){lsDel(h);toast('Sunucu silindi.');renderServers();},function(e){toast(e.message);});
+      req('srv.delete',{host:h}).then(function(){wipeSrvLocal(h);toast('Sunucu silindi.');renderServers();},function(e){toast(e.message);});
     });
   }else{
     ask('Listeden kaldır',h+' listenden kaldırılacak.',null,'Kaldır',function(){
@@ -5289,7 +5350,7 @@ $('sfAdmBtn').addEventListener('click',function(){
 $('sfDel').addEventListener('click',function(){
   var h=fHost,s=SVM[h];if(!isOwnerI(s))return;
   ask('Sunucuyu sil','"'+stripCodes(s.name)+'" ve dünyası kalıcı olarak silinecek.',null,'Sil',function(){
-    req('srv.delete',{host:h}).then(function(){toast('Sunucu silindi.');if(!curSrv)show('servers');},function(e){toast(e.message);});
+    req('srv.delete',{host:h}).then(function(){if(curSrv===h)exitToMenu();wipeSrvLocal(h);toast('Sunucu silindi.');if(!curSrv)show('servers');},function(e){toast(e.message);});
   });
 });
 $('pSrv').addEventListener('click',function(){if(curSrv)openForm('edit',curSrv);});
@@ -5311,6 +5372,9 @@ function joinSrv(h){
   if(joining)return;joining=true;toast('Sunucuya bağlanılıyor…');
   syncHost(h).then(function(){return req('join',{host:h});}).then(function(r){
     var wid='sv_'+h+'_'+pid,ps=r.pos;
+    var lg=store.get('kd_gen_'+h);
+    if(r.gen&&lg&&lg!==r.gen)wipeSrvLocal(h,true); /* sunucu silinip yeniden açılmış: eski dünya/envanter gitsin */
+    if(r.gen)store.set('kd_gen_'+h,r.gen);
     lsAdd(h);bkMeta(h,r.bk);
     bkLoad(h);pendSaved=false;
     var srvE=r.edits||{},miss=[],pend=[],k,i,m,d;
