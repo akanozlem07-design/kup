@@ -1736,11 +1736,11 @@ function genOver(cx,cz){
           var c2=Math.abs(fbm3(wx/19,y/13,wz/19,seed+404)-0.5);
           var cT=y<OFF?1.7:1.3;
           if(c1<0.048*cT && c2<0.06*cT){
-            d[idx]=(y<=OFF-56)?85:0;
+            d[idx]=(y<=OFF-56&&hash3(wx>>2,y>>2,wz>>2,seed+707)<.06)?85:0;
             continue;
           }
           if(y>4 && y<OFF+30 && fbm3(wx/42,y/24,wz/42,seed+505)>0.62){
-            d[idx]=(y<=OFF-56)?85:0;
+            d[idx]=(y<=OFF-56&&hash3(wx>>2,y>>2,wz>>2,seed+707)<.06)?85:0;
             continue;
           }
         }
@@ -2004,12 +2004,12 @@ function genOver(cx,cz){
   }
 
   /* Harap Nether Portalı: Overworld'de nadir ve tohumlu yapı */
-  /* Harap Nether portalları nadir: yaklaşık her 80 chunk'tan birinde. */
-  if(wtype!=='flat' && hash2(cx,cz,seed+14001)<.0125){
+  /* Harap Nether portalları çok nadir: yaklaşık her 400 chunk'tan birinde. */
+  if(wtype!=='flat' && hash2(cx,cz,seed+14001)<.0025){
     var rox=4+((hash2(cx,cz,seed+14002)*6)|0),roz=4+((hash2(cx,cz,seed+14003)*6)|0),rwx=bx+rox,rwz=bz+roz,ry=heightAt(rwx,rwz)+1;
     if(ry>SEA+1&&ry<H-8){
       for(var rdx=0;rdx<4;rdx++)for(var rdy=0;rdy<5;rdy++){
-        if((rdx===0||rdx===3||rdy===0||rdy===4) && hash3(rwx+rdx,rdy,rwz,seed+14004)>.22)putN(d,rox+rdx,ry+rdy,roz,hash3(rwx+rdx,rdy,rwz,seed+14008)<.22?198:142);
+        if((rdx===0||rdx===3||rdy===0||rdy===4) && hash3(rwx+rdx,rdy,rwz,seed+14004)>.58)putN(d,rox+rdx,ry+rdy,roz,hash3(rwx+rdx,rdy,rwz,seed+14008)<.28?198:142);
       }
       putN(d,rox+1,ry,roz,142);putN(d,rox+2,ry,roz,142);
       for(var rr=0;rr<7;rr++){var px2=rox+((hash2(rwx,rr,seed+14005)*7)|0)-1,pz2=roz+((hash2(rwz,rr,seed+14006)*5)|0)-2;putN(d,px2,ry,pz2,145,true);}
@@ -3496,6 +3496,7 @@ function rawSet(x,y,z,id){
   var ek=ekey(cx,cz);(edits[ek]||(edits[ek]={}))[idx]=id;dirty=true;if(NETG)netPush(ek,idx,id);
 }
 function setDim(n){
+  if(n!==2&&typeof hideEndCrystals==='function')hideEndCrystals();
   dim=n;if(cur)cur.dim=n;
   resetChunks();clearEntities();setFog();
   var ld=$('loading');ld.hidden=false;ld.style.opacity=1;
