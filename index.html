@@ -2324,7 +2324,7 @@ function setBlock(x,y,z,id){
   if(!fluidBatch){
     saveGame();
     /* Blok değişiklikleri periyodik kayıt aralığına bağlı kalmasın. */
-    if(cur&&!cur.net&&dirty){if(jset('kd_w_'+cur.id,packEdits())){dirty=false;saveWorlds();}}
+    if(cur&&dirty){if(jset('kd_w_'+cur.id,packEdits())){dirty=false;saveWorlds();}}
   }
 }
 
@@ -2659,7 +2659,8 @@ function step(dt){
     P.vy=0;
   }else{P.y=ny;P.onGround=false;}
   if(auto&&P.onGround&&!P.fly&&(sx||sy)){P.vy=8.7;P.onGround=false;}
-  if(P.y<-30)spawn();
+  /* End boşluğu: oyuncu düşerken canı yavaşça azalır; eşyalar End'de korunmaz. */
+  if(dim===2&&surv&&!P.fly&&P.y<58)svHurt(Math.max(.12,(58-P.y)*.018)*dt*10);
 
   /* Kaktüs teması kontrolü */
   if(surv && !P.fly){
@@ -3136,12 +3137,17 @@ function respawnPlayer(){
   if(deadEl)deadEl.style.display='none';paused=false;show(null);drawStats();
 }
 function showDeath(){
-  if(surv&&!(cur&&cur.keep)){
+  if(surv&&!(cur&&cur.keep)&&dim!==2){
     var st=[],i;
     for(i=0;i<44;i++)if(slots[i]){st.push({id:slots[i].id,n:slots[i].n});slots[i]=null;}
     for(i=0;i<9;i++)if(cg[i]){st.push({id:cg[i].id,n:cg[i].n});cg[i]=null;}
     if(st.length)deathStash={dim:dim,x:P.x,y:P.y+.6,z:P.z,items:st};
     xp=0;updXp();refreshHotbar();
+  }
+  if(surv&&dim===2){
+    for(var ei=0;ei<44;ei++)slots[ei]=null;
+    for(ei=0;ei<9;ei++)cg[ei]=null;
+    xp=0;updXp();refreshHotbar();drawStats();saveGame();
   }
   deadOn=true;paused=true;releaseInput();stopMining();
   if(!deadEl){
@@ -3918,21 +3924,37 @@ function ensureEndCrystals(){
   if(!endCrystals){endCrystals=[];var saved=cur&&Array.isArray(cur.ec)?cur.ec:null;for(var k=0;k<8;k++){var a=k*Math.PI/4,px=Math.round(8+Math.cos(a)*26),pz=Math.round(8+Math.sin(a)*26),ph=78+((k*7)%5)*5;endCrystals.push({x:px+.5,y:ph+1.8,z:pz+.5,hp:5,alive:!saved||saved[k]!==false,t:Math.random(),beam:null});}}
   for(var i=0;i<endCrystals.length;i++)if(endCrystals[i].alive&&!endCrystals[i].m)crystalMesh(endCrystals[i]);
 }
-function hideEndCrystals(){if(!endCrystals)return;endCrystals.forEach(function(c){if(c.m){scene.remove(c.m);c.m=null;}});}
+function hideEndCrystals(){if(!endCrystals)return;endCrystals.forEach(function(c){if(c.m){scene.remove(c.m);c.m=null;}if(c.beam){scene.remove(c.beam);c.beam=null;}});}
+function crystalProtected(c){
+  var dx=P.x-c.x,dy=P.y+1-c.y,dz=P.z-c.z,l=Math.hypot(dx,dy,dz)||1;
+  for(var q=.35;q<l-.25;q+=.3){var x=Math.floor(c.x+dx*q/l),y=Math.floor(c.y+dy*q/l),z=Math.floor(c.z+dz*q/l);if(isSolidBlock(getBlock(x,y,z,0)))return true;}
+  return false;
+}
+function crystalExplosionBlocks(c){
+  var rr=4.2,lo=Math.floor(c.x-rr),hi=Math.ceil(c.x+rr);
+  for(var x=lo;x<=hi;x++)for(var y=Math.floor(c.y-rr);y<=Math.ceil(c.y+rr);y++)for(var z=Math.floor(c.z-rr);z<=Math.ceil(c.z+rr);z++){
+    var dx=x+.5-c.x,dy=y+.5-c.y,dz=z+.5-c.z;if(dx*dx+dy*dy+dz*dz>rr*rr)continue;
+    var b=getBlock(x,y,z,0),bd=B[b];if(!b||b===76||b===142||b===198||b===143||b===144||b===184||!bd||bd.hard>=20)continue;
+    setBlock(x,y,z,0);spawnBreakParticles(b,x,y,z);
+  }
+}
 function explodeEndCrystal(c){
   if(!c||!c.alive)return;c.alive=false;if(c.m){scene.remove(c.m);c.m=null;}
-  spawnBreakParticles(3,Math.floor(c.x),Math.floor(c.y),Math.floor(c.z));playNoise(.5,180,.22);
+  var shielded=crystalProtected(c);
+  if(c.beam){scene.remove(c.beam);c.beam=null;}crystalExplosionBlocks(c);spawnBreakParticles(3,Math.floor(c.x),Math.floor(c.y),Math.floor(c.z));playNoise(.5,180,.22);
   var dx=P.x-c.x,dy=P.y+1-c.y,dz=P.z-c.z,dist=Math.hypot(dx,dy,dz);
-  if(surv&&dist<6){svHurt(Math.max(2,Math.round(12-dist*1.5)));if(dist>0)kbPlayer(dx/dist,dz/dist,Math.max(4,12-dist));}
+  if(surv&&dist<6&&!shielded){svHurt(Math.max(2,Math.round(12-dist*1.5)));if(dist>0)kbPlayer(dx/dist,dz/dist,Math.max(4,12-dist));}
   toast('End kristali patladı!');
 }
 function crystalTick(dt){
   if(dim!==2||!endCrystals)return;
   var dr=null;for(var i=0;i<mobs.length;i++)if(mobs[i].t===22){dr=mobs[i];break;}
+  var near=null,nd=1e9;if(dr)for(i=0;i<endCrystals.length;i++){var nc=endCrystals[i];if(nc.alive){var qd=Math.hypot(dr.x-nc.x,dr.z-nc.z);if(qd<nd){nd=qd;near=nc;}}}
   for(i=0;i<endCrystals.length;i++){
     var c=endCrystals[i];if(!c.alive)continue;c.t+=dt;
     if(c.m){c.gem.rotation.y+=dt*2;c.ring.rotation.z+=dt*1.5;c.gem.position.y=Math.sin(c.t*3)*.08;}
-    if(dr&&Math.hypot(dr.x-c.x,dr.z-c.z)<32&&Math.abs(dr.y-c.y)<32){c.healT=(c.healT||0)-dt;if(c.healT<=0){c.healT=.5;dr.hp=Math.min(MD[22][10],dr.hp+1);}}
+    if(dr&&c===near&&Math.hypot(dr.x-c.x,dr.z-c.z)<32&&Math.abs(dr.y-c.y)<32){c.healT=(c.healT||0)-dt;if(c.healT<=0){c.healT=.5;dr.hp=Math.min(MD[22][10],dr.hp+1);}}
+    if(c===near&&dr){if(!c.beam){c.beam=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.68}));scene.add(c.beam);}c.beam.geometry.setFromPoints([new THREE.Vector3(c.x,c.y,c.z),new THREE.Vector3(dr.x,dr.y+1.2,dr.z)]);}else if(c.beam){scene.remove(c.beam);c.beam=null;}
   }
 }
 function tryHitEndCrystal(ex,ey,ez,dx,dy,dz,maxT){
@@ -3948,6 +3970,7 @@ function enterEnd(){
 function leaveEnd(){
   saveGame();
   hideEndCrystals();
+  if(bossEl)bossEl.style.display='none';
   setDim(0);spawn();P.vx=P.vy=P.vz=0;P.kx=P.kz=0;peak=P.y;portalLock=true;portalT=0;
   toast('Üst dünyaya döndün.');saveGame();
 }
@@ -4612,10 +4635,11 @@ function saveGame(){
     jset('kd_sv_'+cur.id,svPayload);
   }
   saveWorlds();
-  if(dirty){if(cur.net)dirty=false;else if(jset('kd_w_'+cur.id,packEdits()))dirty=false;}
+  if(dirty){if(jset('kd_w_'+cur.id,packEdits()))dirty=false;}
 }
 function startPanorama(){
   dim=0;cur=null;state='menu';seed=(Math.random()*1e9)|0;wtype='normal';edits={};dirty=false;
+  if(bossEl)bossEl.style.display='none';
   bedPos=null;surv=false;clearEntities();resetChunks();spawn();setFly(false);panYaw=Math.random()*6.28;tod=.1;
   document.body.classList.remove('playing');
   $('uw').hidden=true;hl.visible=false;crackMesh.visible=false;pl.group.visible=false;
@@ -5302,7 +5326,7 @@ function joinSrv(h){
     r.players.forEach(rpAdd);
     startWorld(w);NETG=true;
     pend.concat(miss).forEach(function(q){netQ.push(q);});if(netQ.length)bkDirty=true;
-    store.del('kd_w_'+wid);
+    /* Sunucu ücretsiz olsa bile son güvenli yerel dünya yedeği kalsın. */
     updTag();
   },function(e){toast(e.message);}).then(function(){joining=false;});
 }
@@ -5406,7 +5430,6 @@ function frame(now){
      if(!headEl){headEl=document.createElement('div');headEl.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2;background:#1c1308;display:none';document.body.appendChild(headEl);}
      headEl.style.display=inBlk?'block':'none';
      if(inBlk){suffT+=dt;if(suffT>=.5){suffT=0;if(surv)svHurt(1);}}else suffT=0;}
-    if(dim===2&&P.y<25)leaveEnd();
     step(dt);
     var spd=Math.hypot(P.vx,P.vz);
     if(P.onGround||P.fly||inWater)walkT+=dt*spd*(sprinting?4.4:3.4);
