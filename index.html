@@ -1216,14 +1216,15 @@ tpaint(46,function(x,y,r){
     var cols=[[150,40,40],[40,70,150],[60,130,60],[170,140,40],[110,60,140]];
     var c=cols[(x+(y>8?2:0))%5];if(x%3===2)c=shade(c,-40);return nzc(c,6,r);});
   tpaint(111,function(x,y,r){if(r()<.1)return [150,60,200];return nzc([14,6,22],5,r);});
-  /* 112: Ejderha Yumurtası (yumurta biçimli, saydam kenarlı) */
+  /* 112: Ejderha Yumurtası - tamamen opak, mor-siyah 3B yüzey dokusu */
   tpaint(112,function(x,y,r){
-    var ny=(y-8.6)/6.6,sc=1-.24*Math.max(0,-ny),rx=5.0*sc,dx=(x-7.5)/rx;
-    if(dx*dx+ny*ny>1)return [0,0,0,0];
-    if(dx*dx+ny*ny>.78)return [58,24,92,255];
-    if((x===5||x===6)&&(y===5||y===6))return [210,170,255,255];
-    if(r()<.13)return [156,64,210,255];
-    return nzc([16,7,26],6,r);
+    var dx=(x-7.5)/7.5,dy=(y-7.5)/7.5;
+    var edge=Math.max(0,1-Math.sqrt(dx*dx+dy*dy));
+    var c=nzc([18+Math.round(edge*22),7+Math.round(edge*8),30+Math.round(edge*42)],5,r);
+    if((x===5||x===6)&&(y===4||y===5))c=[214,174,255];
+    else if(r()<.12)c=[92,30,142];
+    else if((x+y*3)%11===0)c=[34,12,54];
+    return [c[0],c[1],c[2],255];
   });
   /* 113: Meşale */
   tpaint(113,function(x,y,r){
@@ -1569,13 +1570,25 @@ function updThr(dt){
     f.t+=dt;
     if(f.k==='arrow'){
       f.vy-=9*dt;f.x+=f.vx*dt;f.y+=f.vy*dt;f.z+=f.vz*dt;f.m.position.set(f.x,f.y,f.z);f.m.lookAt(f.x+f.vx,f.y+f.vy,f.z+f.vz);
+      /* Ok çarpışması: önce End kristalleri, sonra canlılar. */
+      var hitCrystal=null,crDist=1e9;
+      if(dim===2&&endCrystals)for(var ci=0;ci<endCrystals.length;ci++){
+        var ec=endCrystals[ci];if(!ec.alive)continue;
+        var cdist=Math.hypot(f.x-ec.x,f.y-ec.y,f.z-ec.z);
+        if(cdist<1.85&&cdist<crDist){hitCrystal=ec;crDist=cdist;}
+      }
+      if(hitCrystal){explodeEndCrystal(hitCrystal);done=true;}
       var hitM=null;
-      for(var mi=0;mi<mobs.length;mi++){var mm=mobs[mi],md=MD[mm.t];if(Math.hypot(f.x-mm.x,f.y-(mm.y+(md[5]+md[3])/2),f.z-mm.z)<Math.max(.6,md[2]*.7+.2)){hitM=mm;break;}}
-      if(hitM&&hitM.t!==20&&!(hitM.inv>0)){
+      if(!done)for(var mi=0;mi<mobs.length;mi++){
+        var mm=mobs[mi],md=MD[mm.t],mdy=mm.y+(md[5]+md[3])/2;
+        var mDist=mm.t===22?Math.hypot((f.x-mm.x)*.72,(f.y-mdy)*.72,(f.z-mm.z)*.72):Math.hypot(f.x-mm.x,f.y-mdy,f.z-mm.z);
+        if(mDist< (mm.t===22?3.8:Math.max(.6,md[2]*.7+.2))){hitM=mm;break;}
+      }
+      if(!done&&hitM&&hitM.t!==20&&!(hitM.inv>0)){
         var al=Math.hypot(f.vx,f.vz)||1;hitM.hp-=6;hitM.vx=f.vx/al*5;hitM.vz=f.vz/al*5;hitM.vy=4;hitM.og=false;hitM.kb=.3;hitM.inv=.3;hitM.angry=true;hitM.hurtT=.4;sfx.hurt();
         if(hitM.hp<=0)mobKill(hitM,false);done=true;
-      }else if(hitM&&hitM.t===20)done=true;
-      else if(isSolidBlock(getBlock(Math.floor(f.x),Math.floor(f.y),Math.floor(f.z),0))||f.t>8||f.y<2)done=true;
+      }else if(!done&&hitM&&hitM.t===20)done=true;
+      else if(!done&&isSolidBlock(getBlock(Math.floor(f.x),Math.floor(f.y),Math.floor(f.z),0))||f.t>8||f.y<2)done=true;
       if(done){scene.remove(f.m);thr.splice(i,1);}
       continue;
     }
@@ -2242,8 +2255,32 @@ function buildMesh(ch){
         }
         var bd=B[id];if(!bd)continue;
 
+        /* Ejderha yumurtası: atlas dokulu gerçek 3B yumurta/ellipsoid mesh */
+        if(bd.egg){
+          var etile=bd.s,ecol=etile%AT,erow=(etile/AT)|0;
+          var eu0=(ecol+EPS)/AT,eu1=(ecol+1-EPS)/AT;
+          var ev0=1-(erow+1-EPS)/AT,ev1=1-(erow+EPS)/AT;
+          var erings=9, esegs=14, estart=vc;
+          for(var er=0;er<=erings;er++){
+            var et=er/erings, ey=y+.06+.88*et;
+            var eradius=.035+.46*Math.pow(Math.sin(Math.PI*et),.62)*(1-.10*et);
+            for(var ea=0;ea<esegs;ea++){
+              var ang=ea/esegs*Math.PI*2, exx=wx+.5+Math.cos(ang)*eradius, ezz=wz+.5+Math.sin(ang)*eradius;
+              P.push(exx,ey,ezz);
+              var shade=.72+.23*Math.max(0,Math.cos(ang-.65))+.05*(1-et);
+              C.push(shade,shade,shade);
+              U.push(eu0+(eu1-eu0)*(ea/esegs),ev1-(ev1-ev0)*et);
+            }
+          }
+          for(var eri=0;eri<erings;eri++)for(var esi=0;esi<esegs;esi++){
+            var ea0=estart+eri*esegs+esi,ea1=estart+eri*esegs+(esi+1)%esegs,eb0=ea0+esegs,eb1=ea1+esegs;
+            I.push(ea0,ea1,eb1,ea0,eb1,eb0);
+          }
+          vc+=((erings+1)*esegs);
+          continue;
+        }
         /* Çiçekler ve Kuru Çalılar için 3B Çapraz (X) Bitki Geometrisi */
-        if(bd.plant||bd.egg){
+        if(bd.plant){
           var ptile=bd.s,pcol=ptile%AT,prow=(ptile/AT)|0;
           var u0=(pcol+EPS)/AT,u1=(pcol+1-EPS)/AT;
           var v0=1-(prow+1-EPS)/AT,v1=1-(prow+EPS)/AT;
@@ -2374,6 +2411,7 @@ function updXpOrbs(dt){
 }
 var dropBoxGeo=new THREE.BoxGeometry(0.28,0.28,0.28);
 var dropFlatGeo=new THREE.BoxGeometry(0.32,0.32,0.06);
+var dropEggGeo=new THREE.SphereGeometry(.22,14,9);
 var partGeo=new THREE.BoxGeometry(0.11,0.11,0.11);
 var dropTexCache={};
 
@@ -2393,8 +2431,10 @@ function getDropMat(id){
 function spawnDrop(id,n,x,y,z,thrown){
   if(!id||n<=0)return;
   var bd=B[id];
-  var isBlock=!!(bd&&!bd.plant);
-  var mesh=new THREE.Mesh(isBlock?dropBoxGeo:dropFlatGeo,getDropMat(id));
+  var isEgg=!!(bd&&bd.egg);
+  var isBlock=!!(bd&&!bd.plant&&!isEgg);
+  var mesh=new THREE.Mesh(isEgg?dropEggGeo:(isBlock?dropBoxGeo:dropFlatGeo),getDropMat(id));
+  if(isEgg)mesh.scale.set(1,1.35,1);
   mesh.position.set(x,y,z);
   scene.add(mesh);
   drops.push({
@@ -2870,6 +2910,13 @@ function updateMining(dt){
   }
 }
 
+function collectDragonEgg(h){
+  if(!h||getBlock(h.x,h.y,h.z,0)!==194)return false;
+  if(!surv){eggTeleport(h);return true;}
+  if(addItem(194,1)>0){toast('Envanterinde yer yok.');return true;}
+  setBlock(h.x,h.y,h.z,0);refreshHotbar();drawStats();sfx.pop();buzz();saveGame();toast('Ejderha yumurtası alındı.');
+  return true;
+}
 function eggTeleport(h){
   var ox=h.x,oy=h.y,oz=h.z,tr=0;
   while(tr++<60){
@@ -2899,7 +2946,7 @@ function doPlace(){
   var h=aim();
   if(!h)return;
   var targetBlock=getBlock(h.x,h.y,h.z,0);
-  if(targetBlock===194){eggTeleport(h);return;}
+  if(targetBlock===194){collectDragonEgg(h);return;}
   if(isBed(targetBlock)){useBed(h);return;}
   if(targetBlock===200){
     var remFruit=addItem(201,1);
@@ -2933,7 +2980,7 @@ function placeBed(x,y,z){
 }
 
 var throwOn=false,throwT=0,thr=[];
-function startMining(){if(!paused&&state==='playing'){var hid=heldItemId();if(hid===100||hid===187||hid===188||hid===195){var ah=hid===187?aim():null;if(!(ah&&getBlock(ah.x,ah.y,ah.z,0)===182)){throwOn=true;throwT=0;triggerSwing();return;}}var hs=surv&&slots[sel]&&ITEMS[slots[sel].id]&&ITEMS[slots[sel].id].kind==='food';if(hs){eatOn=true;eatT=0;return;}var eh0=aim();if(eh0&&eh0.b===194){eggTeleport(eh0);triggerSwing();return;}mining.active=true;triggerSwing();}}
+function startMining(){if(!paused&&state==='playing'){var hid=heldItemId();if(hid===100||hid===187||hid===188||hid===195){var ah=hid===187?aim():null;if(!(ah&&getBlock(ah.x,ah.y,ah.z,0)===182)){throwOn=true;throwT=0;triggerSwing();return;}}var hs=surv&&slots[sel]&&ITEMS[slots[sel].id]&&ITEMS[slots[sel].id].kind==='food';if(hs){eatOn=true;eatT=0;return;}var eh0=aim();if(eh0&&eh0.b===194){collectDragonEgg(eh0);triggerSwing();return;}mining.active=true;triggerSwing();}}
 function stopMining(){throwOn=false;throwT=0;mining.active=false;mining.prog=0;eatOn=false;eatT=0;}
 
 /* ---------- Parça Yönetimi ---------- */
@@ -3032,7 +3079,7 @@ function select(i){
 }
 
 var surv=false,slots=[],hp=20,hu=20,regT=0,huT=0,peak=0,wasAir=false,breath=10,drownT=0,DEF_HOT=HOT.slice();
-var slotEls=hotbar.children,statsEl=$('stats'),invEl=$('inv'),invOpen=false,invMode='bag',cursor=null,cg=[];
+var slotEls=hotbar.children,statsEl=$('stats'),invEl=$('inv'),invOpen=false,invMode='bag',cursor=null,cg=[],invGuardUntil=0;
 var furnaces={},activeFurnaceKey=null,chestStore={},activeChestKey=null,showRecipes=false;
 function chestKey(x,y,z){return (dim===2?'E':dim?'N':'')+x+','+y+','+z;}
 function chestLoot(k){
@@ -3088,7 +3135,7 @@ HOT.forEach(function(_,i){slotEls[i].insertAdjacentHTML('beforeend','<i></i>');}
 
 var bagEl=document.createElement('div');bagEl.className='slot';bagEl.innerHTML='<b>9</b><span class="e">🎒</span>';
 bagEl.style.backgroundColor='rgba(255,255,255,.12)';
-bagEl.addEventListener('pointerdown',function(e){e.preventDefault();toggleInv();});
+bagEl.addEventListener('pointerdown',function(e){e.preventDefault();e.stopPropagation();if(performance.now()<invGuardUntil)return;toggleInv();});
 hotbar.appendChild(bagEl);
 
 function icon(el,id){
@@ -4376,7 +4423,7 @@ window.addEventListener('pointerup',function(e){
 window.addEventListener('pointercancel',function(e){if(drag&&e.pointerId===drag.id){clearTimeout(drag.t);drag=null;}});
 
 function openInv(m){
-  if(state!=='playing'||paused||invOpen)return;
+  if(performance.now()<invGuardUntil||state!=='playing'||paused||invOpen)return;
   invMode=m||'bag';paused=true;releaseInput();stopMining();invOpen=true;renderInv();invEl.hidden=false;
 }
 function openChest(x,y,z){
@@ -4392,11 +4439,13 @@ function closeInv(){
     if(cursor){addItem(cursor.id,cursor.n);cursor=null;}
     refreshHotbar();drawStats();
   }
-  activeFurnaceKey=null;invOpen=false;invEl.hidden=true;paused=false;
+  activeFurnaceKey=null;invOpen=false;invEl.hidden=true;paused=false;invGuardUntil=performance.now()+350;
   saveGame();
 }
-function toggleInv(){if(invOpen)closeInv();else openInv('bag');}
-$('invClose').addEventListener('click',closeInv);
+function toggleInv(){if(performance.now()<invGuardUntil)return;if(invOpen)closeInv();else openInv('bag');}
+invEl.addEventListener('pointerdown',function(e){e.stopPropagation();});
+$('invClose').addEventListener('pointerdown',function(e){e.preventDefault();e.stopPropagation();closeInv();});
+$('invClose').addEventListener('click',function(e){e.preventDefault();e.stopPropagation();closeInv();});
 
 window.addEventListener('keydown',function(e){
   if(e.code==='Escape'&&invOpen){e.stopImmediatePropagation();e.preventDefault();closeInv();return;}
