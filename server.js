@@ -73,15 +73,44 @@ function mergeEdits(S, edits) {
   }
   return n;
 }
-const DEFPOS = () => ({ x: 0, y: 80, z: 0, yaw: 0, pitch: 0, dim: 0 });
+const DEFPOS = () => ({ x: 0, y: 80, z: 0, yaw: 0, pitch: 0, dim: 0, held: 0 });
 const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
+function worldOf(S) {
+  if (!S) return null;
+  if (!Number.isFinite(S.tod)) S.tod = 0.08;
+  if (!Array.isArray(S.drops)) S.drops = [];
+  if (!S.claimed || typeof S.claimed !== 'object') S.claimed = {};
+  return S;
+}
+function cleanDrop(d) {
+  if (!d || typeof d !== 'object') return null;
+  const uid = str(d.uid, 80), id = Math.trunc(+d.id), n = Math.trunc(+d.n);
+  if (!uid || !Number.isInteger(id) || id < 1 || id > 255 || !Number.isInteger(n) || n < 1 || n > 64) return null;
+  const bound = (v, lo, hi) => { const q = Number(v); return Number.isFinite(q) ? Math.min(hi, Math.max(lo, q)) : 0; };
+  return { uid, id, n, x: bound(d.x, -100000, 100000), y: bound(d.y, -1000, 100000), z: bound(d.z, -100000, 100000),
+    vx: bound(d.vx, -30, 30), vy: bound(d.vy, -30, 30), vz: bound(d.vz, -30, 30), age: bound(d.age, 0, 181), delay: bound(d.delay, 0, 30), dur: d.dur == null ? undefined : Math.max(0, Math.min(10000, Math.trunc(+d.dur) || 0)) };
+}
 
 function leaveRoom(c) {
   const h = c.cur; if (!h) return;
   c.cur = null;
   const r = ROOMS[h]; if (r) { r.delete(c); if (!r.size) delete ROOMS[h]; }
   bc(h, { t: 'pq', id: c.me.id });
+  if (r && r.size) { const next = r.values().next().value; bc(h, { t: 'world.auth', id: next.me.id }); }
+  const S = SERVERS[h]; if (S) { worldOf(S); mark('servers'); }
 }
+
+/* Dünya saati sunucuya aittir. Oyuncular yokken donar; yeniden girince son durum sürer. */
+let worldPulseAt = Date.now(), worldPersistAt = worldPulseAt;
+setInterval(() => {
+  const now = Date.now(), dt = Math.min(5, Math.max(0, now - worldPulseAt) / 1000); worldPulseAt = now;
+  for (const h of Object.keys(ROOMS)) {
+    const r = ROOMS[h], S = SERVERS[h]; if (!r || !r.size || !S) continue;
+    worldOf(S); S.tod = (S.tod + dt / 900) % 1;
+    bc(h, { t: 'world.time', tod: S.tod });
+  }
+  if (now - worldPersistAt >= 5000) { worldPersistAt = now; if (Object.keys(ROOMS).some(h => ROOMS[h] && ROOMS[h].size)) { mark('servers'); flush(); } }
+}, 1000);
 
 /* ---------- İstek işleyici ---------- */
 function handle(c, m) {
@@ -192,12 +221,14 @@ function handle(c, m) {
       for (const o of r) if (o !== c && o.me.id === me.id) { r.delete(o); o.cur = null; send(o, { t: 'kick', reason: 'Başka yerden giriş yapıldı.' }); }
       if (!P[me.id]) P[me.id] = { name: me.name, role: 'member' };
       P[me.id].name = me.name;
-      const first = !r.has(c); r.add(c); c.cur = h;
+      const first = !r.has(c); r.add(c); c.cur = h; worldOf(S);
+      bc(h, { t: 'world.auth', id: r.values().next().value.me.id }, me.id);
       if (first && !m.re) bc(h, { t: 'pj', p: Object.assign({ id: me.id, name: me.name }, P[me.id].pos || DEFPOS()) }, me.id);
       if (!myList().includes(h)) { myList().push(h); mark('lists'); }
       const others = [...r].filter(x => x !== c).map(x => Object.assign({ id: x.me.id, name: x.me.name }, P[x.me.id].pos || DEFPOS()));
       mark('servers');
-      return ok(c, m, { info: infoOf(S, me.id), bk: bkOf(S), world: { seed: S.seed, seedText: S.seedText, type: S.type, mode: S.mode }, gen: S.gen, edits: S.edits, players: others, pos: P[me.id].pos || null });
+      return ok(c, m, { info: infoOf(S, me.id), bk: bkOf(S), world: { seed: S.seed, seedText: S.seedText, type: S.type, mode: S.mode }, gen: S.gen, edits: S.edits, players: others, pos: P[me.id].pos || null,
+        tod: S.tod, drops: S.drops, authority: r.values().next().value.me.id });
     }
     case 'blk': {
       const s = SERVERS[c.cur]; if (!s || !Array.isArray(m.b)) return;
@@ -216,13 +247,57 @@ function handle(c, m) {
     }
     case 'pos': {
       const s = SERVERS[c.cur]; if (!s) return;
-      const p = { x: num(m.x), y: num(m.y), z: num(m.z), yaw: num(m.yaw), pitch: num(m.pitch), dim: m.dim === 1 || m.dim === 2 ? m.dim : 0 };
+      const p = { x: num(m.x), y: num(m.y), z: num(m.z), yaw: num(m.yaw), pitch: num(m.pitch), dim: m.dim === 1 || m.dim === 2 ? m.dim : 0, held: Math.max(0, Math.min(255, Math.trunc(num(m.held)))) };
       if (s.players[me.id]) s.players[me.id].pos = p;
       mark('servers');
       bc(c.cur, Object.assign({ t: 'pm', id: me.id }, p), me.id);
       return;
     }
     case 'leave': leaveRoom(c); mark('servers'); return;
+    case 'world.drop': {
+      const s = worldOf(SERVERS[c.cur]), d = cleanDrop(m.drop); if (!s || !d) return;
+      if (s.drops.length >= 500 || s.drops.some(x => x.uid === d.uid)) return;
+      s.drops.push(d); mark('servers'); bc(c.cur, { t: 'world.drop', drop: d }, me.id); return;
+    }
+    case 'world.snap': {
+      const s = worldOf(SERVERS[c.cur]), r = ROOMS[c.cur]; if (!s || !r || r.values().next().value !== c) return;
+      const tod = Number(m.tod); if (Number.isFinite(tod)) s.tod = ((tod % 1) + 1) % 1;
+      if (Array.isArray(m.drops)) {
+        const seen = new Set();
+        for (const input of m.drops.slice(0, 300)) {
+          const d = cleanDrop(input); if (!d || seen.has(d.uid)) continue; seen.add(d.uid);
+          const old = s.drops.find(x => x.uid === d.uid); if (old) Object.assign(old, d);
+        }
+        s.drops = s.drops.filter(d => d.age < 180);
+      }
+      mark('servers'); bc(c.cur, { t: 'world.state', tod: s.tod, drops: s.drops }, me.id); return;
+    }
+    case 'world.pick': {
+      const s = worldOf(SERVERS[c.cur]), dropUid = str(m.uid, 80); if (!s || !dropUid) return;
+      const i = s.drops.findIndex(d => d.uid === dropUid); if (i < 0) return;
+      const [d] = s.drops.splice(i, 1); s.claimed[dropUid] = me.id; mark('servers');
+      send(c, { t: 'world.give', drop: d }); bc(c.cur, { t: 'world.remove', uid: dropUid }, me.id); return;
+    }
+    case 'world.return': {
+      const s = worldOf(SERVERS[c.cur]), d = cleanDrop(m.drop); if (!s || !d || s.claimed[d.uid] !== me.id || s.drops.some(x => x.uid === d.uid)) return;
+      delete s.claimed[d.uid]; if (s.drops.length >= 500) return;
+      s.drops.push(d); mark('servers'); bc(c.cur, { t: 'world.drop', drop: d }, me.id); return;
+    }
+    case 'world.consume': {
+      const s = worldOf(SERVERS[c.cur]), dropUid = str(m.uid, 80); if (!s || s.claimed[dropUid] !== me.id) return;
+      delete s.claimed[dropUid]; mark('servers'); return;
+    }
+    case 'world.remove': {
+      const s = worldOf(SERVERS[c.cur]), r = ROOMS[c.cur], dropUid = str(m.uid, 80);
+      if (!s || !r || r.values().next().value !== c || !dropUid) return;
+      const n = s.drops.length; s.drops = s.drops.filter(d => d.uid !== dropUid);
+      if (n !== s.drops.length) { mark('servers'); bc(c.cur, { t: 'world.remove', uid: dropUid }, me.id); }
+      return;
+    }
+    case 'world.sleep': {
+      const s = worldOf(SERVERS[c.cur]); if (!s) return;
+      s.tod = 0.08; mark('servers'); bc(c.cur, { t: 'world.state', tod: s.tod, drops: s.drops }, me.id); return;
+    }
   }
 
   // --- yönetim (sunucu seçili olmalı) ---
