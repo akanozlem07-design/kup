@@ -1710,6 +1710,8 @@ function genNether(cx,cz){
   return d;
 }
 
+/* Yeraltı lavı: sadece en derinde (Y<=-64) ve seyrek, yassı göller halinde */
+function caveLava(wx,y,wz){return y<=OFF-64&&vnoise(wx/30,wz/30,seed+707)>.9;}
 function genOver(cx,cz){
 
   var d=new Uint8Array(CS*H*CS);
@@ -1736,11 +1738,11 @@ function genOver(cx,cz){
           var c2=Math.abs(fbm3(wx/19,y/13,wz/19,seed+404)-0.5);
           var cT=y<OFF?1.7:1.3;
           if(c1<0.048*cT && c2<0.06*cT){
-            d[idx]=(y<=OFF-56&&hash3(wx>>2,y>>2,wz>>2,seed+707)<.06)?85:0;
+            d[idx]=caveLava(wx,y,wz)?85:0;
             continue;
           }
           if(y>4 && y<OFF+30 && fbm3(wx/42,y/24,wz/42,seed+505)>0.62){
-            d[idx]=(y<=OFF-56&&hash3(wx>>2,y>>2,wz>>2,seed+707)<.06)?85:0;
+            d[idx]=caveLava(wx,y,wz)?85:0;
             continue;
           }
         }
@@ -2005,7 +2007,7 @@ function genOver(cx,cz){
 
   /* Harap Nether Portalı: Overworld'de nadir ve tohumlu yapı */
   /* Harap Nether portalları çok nadir: yaklaşık her 400 chunk'tan birinde. */
-  if(wtype!=='flat' && hash2(cx,cz,seed+14001)<.0025){
+  if(wtype!=='flat' && hash2(cx,cz,seed+14001)<.0008 && (cx*cx+cz*cz)>64){
     var rox=4+((hash2(cx,cz,seed+14002)*6)|0),roz=4+((hash2(cx,cz,seed+14003)*6)|0),rwx=bx+rox,rwz=bz+roz,ry=heightAt(rwx,rwz)+1;
     if(ry>SEA+1&&ry<H-8){
       for(var rdx=0;rdx<4;rdx++)for(var rdy=0;rdy<5;rdy++){
@@ -4594,7 +4596,7 @@ function playSelected(){
 
 function startWorld(w){
   ensureAudio();
-  cur=w;seed=w.seed;wtype=w.type;wmode=w.mode;dim=w.dim||0;dragonDead=!!w.dd;dragonHp=Math.max(1,Math.min(200,Number(w.dhp)||200));endCrystals=null;portalLock=true;
+  cur=w;seed=w.seed;wtype=w.type;wmode=w.mode;dim=w.dim||0;dragonDead=!!w.dd;dragonHp=Math.max(1,Math.min(200,Number(w.dhp)||200));hideEndCrystals();endCrystals=null;portalLock=true;
   edits=unpackEdits(jget('kd_w_'+w.id,{}));dirty=false;
   bedPos=w.bed||null;clearEntities();resetChunks();releaseInput();
   if(w.pos){
@@ -4612,6 +4614,7 @@ function startWorld(w){
   show(null);
   document.body.classList.add('playing');
   var ld=$('loading');ld.hidden=false;ld.style.opacity=1;
+  if(dim===2)ensureEndCrystals();
   applyTouch();showHint();showHeldItemName();
   w.played=Date.now();saveWorlds();
 }
@@ -4621,6 +4624,7 @@ function saveGame(){
   var activeDragon=null;for(var di=0;di<mobs.length;di++)if(mobs[di].t===22){activeDragon=mobs[di];break;}
   if(activeDragon)dragonHp=activeDragon.hp;
   cur.dim=dim;cur.dd=dragonDead;cur.dhp=Math.max(1,Math.min(200,Number(dragonHp)||200));cur.ec=endCrystals?endCrystals.map(function(c){return !!c.alive;}):cur.ec;cur.xpv=xp;cur.bed=bedPos;cur.tod=tod;cur.fly=P.fly;cur.hot=HOT.slice();cur.chot=HOT.slice();cur.played=Date.now();
+  if(cur.net)jset('kd_end_'+cur.net,{dd:cur.dd,dhp:cur.dhp,ec:cur.ec,bed:cur.bed,dim:cur.dim,pos:cur.pos});
   if(surv){
     var svPayload={
       slots:cloneSlotArr(slots,44),
@@ -5321,6 +5325,7 @@ function joinSrv(h){
     var pk={};for(var ck in srvE){var a=[],mm=srvE[ck];for(var ci in mm)a.push(+ci,mm[ci]);if(a.length)pk[ck]=a;}
     var w={id:wid,name:stripCodes(r.info.name),seedText:r.world.seedText||String(r.world.seed),seed:r.world.seed,type:r.world.type,mode:r.world.mode,keep:false,created:Date.now(),played:Date.now(),
       pos:ps?{x:ps.x,y:ps.y,z:ps.z,yaw:ps.yaw,pitch:ps.pitch}:null,dim:ps?ps.dim:0,tod:.08,fly:false,net:h};
+    var es0=jget('kd_end_'+h,null);if(es0){w.dd=es0.dd;w.dhp=es0.dhp;w.ec=es0.ec;w.bed=es0.bed;if(es0.pos&&es0.dim!==undefined){w.pos=es0.pos;w.dim=es0.dim;}}
     jset('kd_w_'+wid,pk);
     clearRemotes();netQ.length=0;
     curSrv=h;joinAt=Date.now();SVM[h]=r.info;
@@ -5446,6 +5451,7 @@ function frame(now){
     sprinting=false;
   }
   if(play&&(!paused||invOpen))tickFurnaces(dt);
+  if(dim!==2&&endCrystals)hideEndCrystals();
 
   /* Koşarken görüş açısı genişler */
   var tf=(play&&sprinting)?80:72;
