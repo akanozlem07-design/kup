@@ -198,13 +198,19 @@ function handle(c, m) {
         if (!Array.isArray(e) || typeof e[0] !== 'string' || !/^[EN]?-?\d+,-?\d+$/.test(e[0]) || !Number.isInteger(e[1]) || e[1] < 0 || e[1] > 70000 || !Number.isInteger(e[2])) continue;
         (s.edits[e[0]] || (s.edits[e[0]] = {}))[e[1]] = e[2]; clean.push(e);
       }
-      if (clean.length) { bc(c.cur, { t: 'blk', b: clean }, me.id); mark('servers'); }
+      if (clean.length) {
+        bc(c.cur, { t: 'blk', b: clean }, me.id);
+        mark('servers');
+        /* Blok değişiklikleri sunucu kapanmadan önce mutlaka diske yazılsın. */
+        flush();
+      }
       return;
     }
     case 'pos': {
       const s = SERVERS[c.cur]; if (!s) return;
       const p = { x: num(m.x), y: num(m.y), z: num(m.z), yaw: num(m.yaw), pitch: num(m.pitch), dim: m.dim === 1 || m.dim === 2 ? m.dim : 0 };
       if (s.players[me.id]) s.players[me.id].pos = p;
+      mark('servers');
       bc(c.cur, Object.assign({ t: 'pm', id: me.id }, p), me.id);
       return;
     }

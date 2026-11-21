@@ -2305,7 +2305,12 @@ function setBlock(x,y,z,id){
   if(!ch||y<0||y>=H)return;
   var lx=x&15,lz=z&15,idx=(((y<<4)+lz)<<4)+lx;
   ch.d[idx]=id;ch.edited=true;
-  var ek=ekey(cx,cz);(edits[ek]||(edits[ek]={}))[idx]=id;dirty=true;if(NETG)netPush(ek,idx,id);
+  var ek=ekey(cx,cz);(edits[ek]||(edits[ek]={}))[idx]=id;dirty=true;
+  if(cur&&cur.net){
+    /* Ücretsiz sunucu yeniden başlasa bile telefondaki yedek güncel kalsın. */
+    if(NETG)netPush(ek,idx,id);
+    bkDirty=true;if(curSrv)bkSave();
+  }
   if(id===0)delete furnaces[x+','+y+','+z];
   for(var dx=-1;dx<=1;dx++)for(var dz=-1;dz<=1;dz++){
     if(!(dx===0||(dx===-1&&lx===0)||(dx===1&&lx===15)))continue;
@@ -3910,7 +3915,7 @@ function crystalMesh(c){
   base.position.y=-.95;ring.rotation.x=Math.PI/2;g.add(base);g.add(gem);g.add(ring);g.position.set(c.x,c.y,c.z);scene.add(g);c.m=g;c.gem=gem;c.ring=ring;
 }
 function ensureEndCrystals(){
-  if(!endCrystals){endCrystals=[];var saved=cur&&Array.isArray(cur.ec)?cur.ec:null;for(var k=0;k<8;k++){var a=k*Math.PI/4,px=Math.round(8+Math.cos(a)*26),pz=Math.round(8+Math.sin(a)*26),ph=78+((k*7)%5)*5;endCrystals.push({x:px+.5,y:ph+1.15,z:pz+.5,hp:5,alive:!saved||saved[k]!==false,t:Math.random(),beam:null});}}
+  if(!endCrystals){endCrystals=[];var saved=cur&&Array.isArray(cur.ec)?cur.ec:null;for(var k=0;k<8;k++){var a=k*Math.PI/4,px=Math.round(8+Math.cos(a)*26),pz=Math.round(8+Math.sin(a)*26),ph=78+((k*7)%5)*5;endCrystals.push({x:px+.5,y:ph+1.8,z:pz+.5,hp:5,alive:!saved||saved[k]!==false,t:Math.random(),beam:null});}}
   for(var i=0;i<endCrystals.length;i++)if(endCrystals[i].alive&&!endCrystals[i].m)crystalMesh(endCrystals[i]);
 }
 function hideEndCrystals(){if(!endCrystals)return;endCrystals.forEach(function(c){if(c.m){scene.remove(c.m);c.m=null;}});}
