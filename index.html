@@ -191,6 +191,13 @@ body.playing .hudel{visibility:visible}
 .skc span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .skc.sel{border-color:#fff;background:rgba(255,255,255,.12)}
 .skc em{position:absolute;right:3px;top:1px;font-style:normal;color:#9bd36f;font-size:14px;text-shadow:1px 1px 0 #000}
+.sksection{display:flex;flex-direction:column;gap:6px;padding:9px;background:rgba(0,0,0,.28);border:2px solid rgba(0,0,0,.75)}
+.sksection>strong{font-size:14px;color:var(--accent);text-shadow:1px 1px 0 #000}
+.skstatus{min-height:20px;font-size:13px;color:#d9e8d2;line-height:1.35;text-shadow:1px 1px 0 #000}
+.skhelp{font-size:12px;color:#bbb;line-height:1.35}
+.skprimary{background:#2f7d32!important;box-shadow:inset 3px 3px 0 #8fd07a,inset -3px -3px 0 #2a5a1e!important}
+.skdanger{background:#8b2c2c!important}
+.skc:focus-visible,.sw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:760px){.skwrap{grid-template-columns:minmax(0,1fr)}.skleft{position:sticky;top:calc(-14px - env(safe-area-inset-top,0px));z-index:3;padding:calc(14px + env(safe-area-inset-top,0px)) 0 6px;background:rgba(36,26,18,.94)}.skprev{height:210px}.hintS{display:none}}
 
 #sPause{background:rgba(5,8,14,.62);justify-content:center}
@@ -226,6 +233,14 @@ body.playing .hudel{visibility:visible}
 .dot.on{background:#5f5}
 .sc{flex:none;margin-left:auto;font-size:14px;color:#ddd;padding-left:8px}
 #srvTag{position:fixed;z-index:4;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);padding:3px 10px;background:rgba(12,18,24,.6);border:1px solid rgba(255,255,255,.25);border-radius:4px;font-size:13px;pointer-events:none;white-space:nowrap;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
+.chatBtn{left:calc(12px + env(safe-area-inset-left,0px));bottom:calc(72px + env(safe-area-inset-bottom,0px));height:38px;padding:0 12px;border-radius:7px;font-size:14px}
+#chatBox{position:fixed;z-index:12;left:calc(12px + env(safe-area-inset-left,0px));bottom:calc(118px + env(safe-area-inset-bottom,0px));width:min(370px,calc(100vw - 24px));max-height:min(52vh,430px);display:flex;flex-direction:column;gap:6px;padding:8px;background:rgba(8,12,18,.86);border:2px solid rgba(255,255,255,.35);border-radius:8px;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);touch-action:pan-y}
+#chatLog{min-height:42px;max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin}
+.chatMsg{font:13px/1.35 var(--pix);color:#f4f6f2;word-break:break-word;text-shadow:0 1px 2px #000}
+.chatMsg b{color:#ffcf70}.chatMsg time{color:#aaa;font-size:10px;margin-left:5px}
+#chatForm{display:flex;gap:5px}.chatInput{flex:1;min-width:0;height:36px;padding:0 8px;font:14px var(--pix);color:#fff;background:#10151d;border:2px solid #68717c;border-radius:3px;user-select:text;-webkit-user-select:text;touch-action:auto}
+.chatInput:focus{outline:2px solid var(--accent);outline-offset:1px}.chatSend{width:72px;height:36px;font:700 13px var(--pix);color:#fff;background:#3b7137;border:2px solid #000;cursor:pointer}
+@media(max-width:560px){#chatBox{bottom:calc(118px + env(safe-area-inset-bottom,0px));max-height:46vh}.chatBtn{bottom:calc(70px + env(safe-area-inset-bottom,0px))}}
 </style>
 </head>
 <body>
@@ -247,6 +262,14 @@ body.playing .hudel{visibility:visible}
 <button id="modeBtn" class="ui hudel">KIR</button>
 <button id="downBtn" class="ui round hudel" hidden>AŞAĞI</button>
 <button id="jumpBtn" class="ui round hudel">ZIPLA</button>
+<button id="chatBtn" class="ui chatBtn hudel" hidden>Chat</button>
+<div id="chatBox" hidden>
+  <div id="chatLog" aria-live="polite"></div>
+  <form id="chatForm">
+    <input id="chatInput" class="chatInput" maxlength="160" autocomplete="off" placeholder="Mesaj yaz…">
+    <button type="submit" class="chatSend">Gönder</button>
+  </form>
+</div>
 <div id="stats" class="hudel" hidden></div>
 <div id="hotbar" class="hudel"></div>
 
@@ -402,34 +425,47 @@ body.playing .hudel{visibility:visible}
 
 <!-- Skin Editörü -->
 <div id="sSkins" class="scr dirt" hidden>
-  <h2 class="ttl">Görünümünü Seç ve Çiz</h2>
+  <h2 class="ttl">Skin Atölyesi</h2>
+  <p class="note" style="width:min(980px,100%);text-align:center">Bir skin seç, renk paletinden renk al ve 64×32 şablondaki piksellere dokunarak kendi görünümünü oluştur.</p>
   <div class="skwrap">
     <div class="skleft">
       <canvas id="skPrev" class="skprev"></canvas>
-      <div class="hintS">Sürükleyerek döndür</div>
+      <div class="hintS">Sürükleyerek döndür · Önizleme otomatik kaydolur</div>
     </div>
     <div class="skright">
-      <div class="skbox" id="skBox"><canvas id="skCv" width="64" height="32"></canvas><canvas id="skOv" width="640" height="320"></canvas></div>
-      <div class="tools" id="skTools">
-        <button class="mc sm on" data-t="pen">Kalem</button>
-        <button class="mc sm" data-t="eraser">Silgi</button>
-        <button class="mc sm" data-t="fill">Doldur</button>
-        <button class="mc sm" data-t="pick">Damlalık</button>
+      <div class="sksection">
+        <strong>1 · Skin şablonunu boya</strong>
+        <div class="skbox" id="skBox"><canvas id="skCv" width="64" height="32"></canvas><canvas id="skOv" width="640" height="320"></canvas></div>
+        <div class="skhelp">Yüz, gövde, kollar ve bacaklar beyaz çerçevelerle gösterilir. Kalemle çiz, silgiyle temizle, doldur ile alanı boya.</div>
+        <div class="tools" id="skTools">
+          <button type="button" class="mc sm on" data-t="pen">Kalem</button>
+          <button type="button" class="mc sm" data-t="eraser">Silgi</button>
+          <button type="button" class="mc sm" data-t="fill">Doldur</button>
+          <button type="button" class="mc sm" data-t="pick">Damlalık</button>
+        </div>
+        <div class="pal"><input type="color" id="skColor" value="#e53935" aria-label="Renk"><div id="skPal"></div></div>
       </div>
-      <div class="pal"><input type="color" id="skColor" value="#e53935" aria-label="Renk"><div id="skPal"></div></div>
-      <div class="three">
-        <button class="mc sm" id="skUndo">Geri al</button>
-        <button class="mc sm" id="skReset">Steve'e sıfırla</button>
-        <button class="mc sm" id="skNew">Yeni skin</button>
+      <div class="sksection">
+        <strong>2 · Düzenlemeyi yönet</strong>
+        <div class="three">
+          <button type="button" class="mc sm" id="skUndo">Geri al</button>
+          <button type="button" class="mc sm" id="skReset">Şablona sıfırla</button>
+          <button type="button" class="mc sm" id="skNew">Yeni skin</button>
+        </div>
+        <label class="nm" for="skName">Skin adı<input id="skName" maxlength="20" autocomplete="off" placeholder="Örn. Gece Kaşifi"></label>
+        <div id="skStatus" class="skstatus" role="status" aria-live="polite">Hazır.</div>
       </div>
-      <label class="nm" for="skName">Skin adı<input id="skName" maxlength="20" autocomplete="off"></label>
-      <div id="skList" class="skl"></div>
-      <div class="three">
-        <button class="mc sm" id="skImport">PNG yükle</button>
-        <button class="mc sm" id="skDel">Skini sil</button>
-        <button class="mc sm on" id="skUse">Bunu kullan</button>
+      <div class="sksection">
+        <strong>3 · Skinlerini yönet</strong>
+        <div id="skList" class="skl"></div>
+        <div class="three">
+          <button type="button" class="mc sm" id="skImport">PNG yükle</button>
+          <button type="button" class="mc sm skdanger" id="skDel">Skini sil</button>
+          <button type="button" class="mc sm skprimary" id="skUse">Bunu kullan</button>
+        </div>
+        <div class="skhelp">PNG içe aktarmada 64×32 veya 64×64 Minecraft şablonu kullanabilirsin. Seçtiğin skin tarayıcıda saklanır.</div>
       </div>
-      <button class="mc" id="skDone">Bitti</button>
+      <button type="button" class="mc skprimary" id="skDone">Kaydet ve çık</button>
     </div>
   </div>
   <input type="file" id="skFile" accept="image/png,image/*" hidden>
@@ -2173,8 +2209,13 @@ function ensure(cx,cz){
 }
 
 /* ---------- 3B Sahne ---------- */
-var canvas=$('gl');
-var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:false,powerPreference:'high-performance'});
+var canvas=$('gl'),renderer;
+try{
+  renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:false,powerPreference:'high-performance'});
+}catch(e){
+  document.body.innerHTML='<div style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#101820;color:#fff;font:600 18px/1.5 system-ui,sans-serif;text-align:center"><div>3B oyun motoru başlatılamadı.<br><small style="font-weight:400;color:#b8c4cc">Tarayıcıda WebGL desteğini açıp sayfayı yenileyin.</small></div></div>';
+  throw e;
+}
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.75));
 var scene=new THREE.Scene();
 var skyCol=new THREE.Color(0x8ec7ff);
@@ -2959,7 +3000,7 @@ function buzz(){try{if(navigator.vibrate)navigator.vibrate(8);}catch(e){}}
 
 function finishBreak(h){
   var bid=getBlock(h.x,h.y,h.z,0);
-  if(!bid||bid===7||bid===85||bid===140)return;
+  if(!bid||bid===7||bid===85||bid===140||(bid===76&&surv))return;
   setBlock(h.x,h.y,h.z,0);
   if(bid===142)killPortalsAround(h.x,h.y,h.z);
   spawnBreakParticles(bid,h.x,h.y,h.z);
@@ -3008,7 +3049,7 @@ function updateMining(dt){
     mining.prog=0;barWrap.hidden=true;crackMesh.visible=false;return;
   }
   var h=aim();
-  if(!h || h.y<=0 || h.b===76 || h.b===85 || h.b===140 || h.b===194){
+  if(!h || h.y<=0 || h.b===85 || h.b===140 || h.b===194 || (h.b===76&&surv)){
     mining.prog=0;barWrap.hidden=true;crackMesh.visible=false;return;
   }
   if(h.x!==mining.x || h.y!==mining.y || h.z!==mining.z){
@@ -3741,19 +3782,6 @@ var RC=[
   RC.push({p:[[M],[M],[20]],r:[sw,1]});
 });
 
-var RECIPE_GUIDE=[
-  {id:8,t:'Meşe / Huş / Ladin Tahta (×4)',d:'1 Meşe, Huş veya Ladin Kütüğü'},
-  {id:20,t:'Çubuk (×4)',d:'2 herhangi bir Tahta üst üste'},
-  {id:11,t:'Çalışma Masası',d:'2×2 kare şeklinde 4 Tahta'},
-  {id:70,t:'Makas (Shears)',d:'2 Demir Külçesi çapraz (yaprak toplar)'},
-  {id:12,t:'Ocak (3×3)',d:'3×3 kare kenarlarına 8 Kırıktaş (ortası boş)'},
-  {id:30,t:'Kazma (3×3)',d:'Üst sıra 3 malzeme + orta dikey 2 Çubuk'},
-  {id:32,t:'Balta (3×3)',d:'Sol üst 3 malzeme + 2 Çubuk'},
-  {id:34,t:'Kürek (3×3)',d:'Üst 1 malzeme + altta 2 Çubuk'},
-  {id:36,t:'Kılıç (3×3)',d:'Üstte 2 malzeme + altta 1 Çubuk'},
-  {id:27,t:'Demir / Altın Külçesi',d:'Ocakta Demir veya Altın Cevheri erit'}
-];
-
 /* Tahta (8 ve 45), Kırıktaş (42), Demir (27), Altın (56), Elmas (57) Alet Setleri */
 [
   [8,30,32,34,36],
@@ -3771,9 +3799,10 @@ var RECIPE_GUIDE=[
 });
 
 var RECIPE_GUIDE=[
-  {id:8,t:'Tahta (×4)',d:'1 Kütük (Meşe, Çam veya Huş)'},
+  {id:8,t:'Meşe / Huş / Ladin Tahta (×4)',d:'1 Meşe, Huş veya Ladin Kütüğü'},
   {id:20,t:'Çubuk (×4)',d:'2 Tahta üst üste'},
   {id:11,t:'Çalışma Masası',d:'2×2 kare şeklinde 4 Tahta'},
+  {id:70,t:'Makas (Shears)',d:'2 Demir Külçesi çapraz (yaprak toplar)'},
   {id:12,t:'Ocak (3×3)',d:'3×3 kare kenarlarına 8 Kırıktaş (ortası boş)'},
   {id:30,t:'Kazma (3×3)',d:'Üst sıra 3 malzeme + orta dikey 2 Çubuk'},
   {id:32,t:'Balta (3×3)',d:'Sol üst 3 malzeme + 2 Çubuk'},
@@ -4979,6 +5008,7 @@ function hideHint(){
 
   function rec(id){return skinData.filter(function(s){return s.id===id;})[0];}
   function saveList(){if(!jset('kd_skins',skinData))toast('Kayıt için yer yok, skin kaydedilemedi.');}
+  function status(msg){var el=$('skStatus');if(el)el.textContent=msg;}
   function texUpd(){if(pv&&pv.tex)pv.tex.needsUpdate=true;}
 
   /* ---- 3B önizleme ---- */
@@ -5057,6 +5087,7 @@ function hideHint(){
     sel=id;nameIn.value=skinName(id);nameIn.disabled=(id==='steve');
     getSkinCv(id,function(src){
       cx.clearRect(0,0,64,32);cx.drawImage(src,0,0);undo=[];texUpd();renderList();
+      status(id==='steve'?'Steve seçildi. Kendi skinin için “Yeni skin”e bas.':skinName(id)+' düzenleniyor.');
     });
   }
   function persist(){
@@ -5064,10 +5095,12 @@ function hideHint(){
     var r=rec(sel);if(!r)return;
     r.url=cv.toDataURL('image/png');delete skinCache[sel];saveList();
     if(activeSkin===sel)applyActiveSkin();
+    status('Değişiklikler kaydedildi.');
   }
   function newRec(name){
     var r={id:'s'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36),name:(name||('Skin '+(skinData.length+1))).slice(0,20),url:''};
     skinData.push(r);sel=r.id;nameIn.value=r.name;nameIn.disabled=false;r.url=cv.toDataURL('image/png');saveList();
+    status(r.name+' oluşturuldu. Çizmeye başlayabilirsin.');
     return r;
   }
   function ensureOwn(){if(sel==='steve')newRec();}
@@ -5127,20 +5160,21 @@ function hideHint(){
 
   /* ---- Düğmeler ---- */
   $('skUndo').addEventListener('click',function(){
-    var im=undo.pop();if(!im){toast('Geri alınacak bir şey yok.');return;}
-    cx.putImageData(im,0,0);persist();texUpd();renderList();
+    var im=undo.pop();if(!im){status('Geri alınacak bir değişiklik yok.');toast('Geri alınacak bir şey yok.');return;}
+    cx.putImageData(im,0,0);persist();texUpd();renderList();status('Son değişiklik geri alındı.');
   });
   $('skReset').addEventListener('click',function(){
-    if(sel==='steve'){toast('Zaten Steve.');return;}
-    pushUndo();paintSteve(cx);persist();texUpd();renderList();
+    if(sel==='steve'){status('Steve zaten varsayılan şablon.');toast('Zaten Steve.');return;}
+    pushUndo();paintSteve(cx);persist();texUpd();renderList();status('Skin varsayılan şablona sıfırlandı.');
   });
   $('skNew').addEventListener('click',function(){
     cx.clearRect(0,0,64,32);paintSteve(cx);undo=[];newRec();texUpd();renderList();
+    status('Yeni skin hazır. Kalem veya doldur aracıyla düzenleyebilirsin.');
   });
   nameIn.addEventListener('input',function(){
     var r=rec(sel);if(!r)return;
     var v=nameIn.value.trim().slice(0,20);if(!v)return;
-    r.name=v;saveList();
+    r.name=v;saveList();status('Skin adı kaydedildi: '+v);
     var sp=listEl.querySelector('.skc.sel span');if(sp)sp.textContent=v;
     var ts=$('tSkin');if(ts&&activeSkin===sel&&curScreen==='title')ts.textContent='Skin: '+v+(pname?'  ·  Oyuncu: '+pname:'');
   });
@@ -5159,7 +5193,7 @@ function hideHint(){
         if(im.width===64&&im.height>=32)cx.drawImage(im,0,0,64,32,0,0,64,32);   /* 64x64 skinlerde üst yarı kullanılır */
         else cx.drawImage(im,0,0,im.width,im.height,0,0,64,32);
         undo=[];newRec(f.name.replace(/\.[^.]+$/,'')||'İçe aktarılan');
-        texUpd();renderList();toast('Skin yüklendi.');
+        texUpd();renderList();status('PNG içe aktarıldı ve kaydedildi.');toast('Skin yüklendi.');
       };
       im.src=fr.result;
     };
@@ -5167,18 +5201,18 @@ function hideHint(){
   });
   $('skDel').addEventListener('click',function(){
     var b=$('skDel');
-    if(sel==='steve'){toast('Steve silinemez.');return;}
+    if(sel==='steve'){status('Steve silinemez.');toast('Steve silinemez.');return;}
     if(!delArm){delArm=1;b.textContent='Emin misin?';clearTimeout(delT);delT=setTimeout(function(){delArm=0;b.textContent='Skini sil';},2500);return;}
     delArm=0;clearTimeout(delT);b.textContent='Skini sil';
-    skinData=skinData.filter(function(s){return s.id!==sel;});delete skinCache[sel];saveList();
+    var removed=skinName(sel);skinData=skinData.filter(function(s){return s.id!==sel;});delete skinCache[sel];saveList();
     if(activeSkin===sel){activeSkin='steve';store.set('kd_skin_active','steve');applyActiveSkin();}
-    pick('steve');
+    pick('steve');status(removed+' silindi.');
   });
   $('skUse').addEventListener('click',function(){
-    activeSkin=sel;store.set('kd_skin_active',sel);applyActiveSkin();renderList();
+    activeSkin=sel;store.set('kd_skin_active',sel);applyActiveSkin();renderList();status(skinName(sel)+' aktif görünüm olarak seçildi.');
     toast('Skin seçildi: '+skinName(sel));
   });
-  $('skDone').addEventListener('click',function(){show(state==='playing'?'pause':'title');});
+  $('skDone').addEventListener('click',function(){persist();status('Skinler kaydedildi.');show(state==='playing'?'pause':'title');});
 
   window.openSkins=function(){
     if(!palBuilt){
@@ -5187,6 +5221,7 @@ function hideHint(){
     }
     initPrev();tool='pen';setTool();setColor(color);
     pick(activeSkin);
+    status('Hazır. Bir skin seç veya yeni skin oluştur.');
     if(pv&&!pv.dead&&!pv.run){pv.run=true;requestAnimationFrame(prevLoop);}
   };
 })();
@@ -5433,6 +5468,47 @@ var pid='',pname='',curSrv=null,joinAt=0,srvSel=null,joining=false;
 var NET={ws:null,authed:false,token:store.get('kd_token')||'',seq:1,reqs:{},connecting:null},NETG=false,netQ=[];
 var SVL=[],SVM={},srvErr='',srvBusy=false;
 var fMode='create',fHost='',fLogo='',fTarget=null,addFound=null,sMode='survival',sType='normal';
+/* ---------- Çok oyunculu sohbet ---------- */
+var chatItems=[],chatSeen={},chatSeq=0;
+var chatBtn=$('chatBtn'),chatBox=$('chatBox'),chatLog=$('chatLog'),chatForm=$('chatForm'),chatInput=$('chatInput');
+function chatRender(){
+  chatLog.textContent='';
+  chatItems.forEach(function(m){
+    var row=document.createElement('div');row.className='chatMsg';
+    var who=document.createElement('b');who.textContent=m.name+': ';
+    var text=document.createElement('span');text.textContent=m.text;
+    var time=document.createElement('time');time.textContent=new Date(m.at).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+    row.appendChild(who);row.appendChild(text);row.appendChild(time);chatLog.appendChild(row);
+  });
+  chatLog.scrollTop=chatLog.scrollHeight;
+}
+function chatReset(){chatItems=[];chatSeen={};chatRender();chatSetOpen(false);}
+function chatSetOpen(open){
+  var can=!!(NETG&&state==='playing'&&!paused);
+  chatBtn.hidden=!can;chatBox.hidden=!(can&&open);
+  if(can)chatBtn.textContent=chatBox.hidden?'Chat':'Chatı kapat';
+  if(can&&open)setTimeout(function(){chatInput.focus();},0);
+}
+function chatAdd(name,text,cid){
+  name=String(name||'Oyuncu').replace(/[\r\n]/g,' ').trim().slice(0,24)||'Oyuncu';
+  text=String(text||'').replace(/[\r\n]/g,' ').trim().slice(0,160);
+  if(!text)return;
+  if(cid){if(chatSeen[cid])return;chatSeen[cid]=1;}
+  chatItems.push({name:name,text:text,at:Date.now()});
+  if(chatItems.length>20)chatItems.splice(0,chatItems.length-20);
+  chatRender();
+}
+function chatSend(){
+  if(!NETG||state!=='playing'||paused)return;
+  var text=chatInput.value.trim().slice(0,160);if(!text)return;
+  var cid=pid+'-'+Date.now().toString(36)+'-'+(++chatSeq);
+  chatAdd(pname||'Oyuncu',text,cid);
+  netSend('ev',{k:'chat',d:{id:cid,name:pname||'Oyuncu',text:text}});
+  chatInput.value='';
+}
+chatBtn.addEventListener('click',function(){chatSetOpen(chatBox.hidden);});
+chatForm.addEventListener('submit',function(e){e.preventDefault();chatSend();});
+chatInput.addEventListener('keydown',function(e){if(e.key==='Escape'){chatSetOpen(false);chatInput.blur();}});
 function netUrl(){
   var u=store.get('kd_wsurl');if(u)return u;
   if(location.protocol==='http:'||location.protocol==='https:')return(location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
@@ -5535,7 +5611,6 @@ function bkSave(){
   bkDirty=false;
 }
 setInterval(function(){if(bkDirty)bkSave();},8000);
-window.addEventListener('pagehide',function(){if(bkDirty)bkSave();});
 function preRestore(){var a=jget('kd_acct',null);return a?rawReq('restore',{acct:a}).then(function(){},function(){}):Promise.resolve();}
 function syncHost(h){
   var mt=jget('kd_bkm_'+h,null),es=store.get('kd_bke_'+h);
@@ -5732,6 +5807,7 @@ function evRecv(m){
     case 'dd':if(!dragonDead){dragonDead=true;toast('Ender Ejderhası yenildi!');}break;
     case 'xp':if(surv&&d.dm===dim&&+d.n>0&&+d.n<=400)spawnXp(+d.n,+d.x||0,+d.y||0,+d.z||0);break;
     case 'mspawn':if(mobAuth()&&d.dm===dim&&d.t===4&&mobs.length<40)spawnMob(4,+d.x||0,+d.y||0,+d.z||0);break;
+    case 'chat':chatAdd(d.name||m.from||'Oyuncu',d.text,d.id||'');break;
     case 'skin':rpSkin(m.from,d.u);break;
   }
 }
@@ -6195,7 +6271,7 @@ function updTag(){
 function leaveSrv(){
   if(!curSrv)return;
   flushNet(true);bkSave();curSrv=null;NETG=false;netQ.length=0;
-  netSend('leave');clearRemotes();updTag();
+  netSend('leave');clearRemotes();chatReset();chatSetOpen(false);updTag();
 }
 function joinSrv(h){
   if(joining)return;joining=true;toast('Sunucuya bağlanılıyor…');
@@ -6223,9 +6299,9 @@ function joinSrv(h){
     var es0=jget('kd_end_'+h,null);if(es0){w.dd=es0.dd;w.dhp=es0.dhp;w.ec=es0.ec;w.bed=es0.bed;if(es0.pos&&es0.dim!==undefined){w.pos=es0.pos;w.dim=es0.dim;}}
     jset('kd_w_'+wid,pk);
     clearRemotes();netQ.length=0;
-    curSrv=h;joinAt=Date.now();SVM[h]=r.info;myOrd=r.ord|0;
+    curSrv=h;joinAt=Date.now();SVM[h]=r.info;myOrd=r.ord|0;chatReset();
     r.players.forEach(rpAdd);
-    startWorld(w);NETG=true;
+    startWorld(w);NETG=true;chatSetOpen(false);
     contJoin(r.cont);sendSkin();
     (r.boats||[]).forEach(function(e){boatNetRecv({a:'add',u:e[0],w:e[1],x:e[2],y:e[3],z:e[4],yaw:e[5],dm:e[6],rd:e[7]});});
     pend.concat(miss).forEach(function(q){netQ.push(q);});if(netQ.length)bkDirty=true;
@@ -6234,8 +6310,8 @@ function joinSrv(h){
   },function(e){toast(e.message);}).then(function(){joining=false;});
 }
 
-function pauseGame(){if(state!=='playing'||paused)return;saveGame();paused=true;releaseInput();show('pause');}
-function resumeGame(){paused=false;show(null);}
+function pauseGame(){if(state!=='playing'||paused)return;saveGame();paused=true;releaseInput();chatSetOpen(false);show('pause');}
+function resumeGame(){paused=false;show(null);chatSetOpen(false);}
 $('menuBtn').addEventListener('click',pauseGame);
 $('pResume').addEventListener('click',resumeGame);
 $('pExit').addEventListener('click',exitToMenu);
@@ -6263,8 +6339,7 @@ window.addEventListener('wheel',function(e){if(state==='playing'&&!paused)select
 window.addEventListener('resize',resize);
 window.addEventListener('orientationchange',resize);
 window.addEventListener('beforeunload',saveGame);
-window.addEventListener('pagehide',saveGame);
-window.addEventListener('pagehide',function(){leaveSrv();});
+window.addEventListener('pagehide',function(){saveGame();if(bkDirty)bkSave();leaveSrv();});
 document.addEventListener('visibilitychange',function(){if(document.hidden){saveGame();if(state==='playing')pauseGame();}});
 setInterval(function(){if(state==='playing'&&!paused)saveGame();},4000);
 
