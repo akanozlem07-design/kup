@@ -64,6 +64,9 @@ body.playing .hudel{visibility:visible}
 
 #stats{position:fixed;z-index:5;left:calc(12px + env(safe-area-inset-left,0px));top:calc(54px + env(safe-area-inset-top,0px));font-size:15px;text-shadow:0 1px 3px #000;pointer-events:none;line-height:1.25;white-space:nowrap}
 #stats .hp{color:#ff5a5a}#stats .hu{color:#ffb84d}
+#playerBadge{position:fixed;z-index:6;left:calc(10px + env(safe-area-inset-left,0px));top:calc(8px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:7px;padding:3px 8px 3px 3px;background:rgba(8,12,18,.72);border:2px solid rgba(255,255,255,.35);border-radius:7px;pointer-events:none;text-shadow:0 1px 2px #000}
+#playerFace{width:36px;height:36px;image-rendering:pixelated;border:1px solid rgba(255,255,255,.45);background:#28384a}
+#playerName{max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#fff}
 
 #stick{position:fixed;z-index:4;width:144px;height:144px;margin:-72px 0 0 -72px;border-radius:50%;border:2px solid var(--hud-edge);background:rgba(12,18,24,.3);pointer-events:none;opacity:.4;transition:opacity .15s}
 #knob{position:absolute;left:50%;top:50%;width:60px;height:60px;border-radius:50%;background:rgba(244,246,242,.55);border:2px solid var(--hud-edge);transform:translate(-50%,-50%)}
@@ -280,6 +283,7 @@ body.playing .hudel{visibility:visible}
     <button type="submit" class="chatSend">Gönder</button>
   </form>
 </div>
+<div id="playerBadge" class="hudel"><canvas id="playerFace" width="32" height="32"></canvas><span id="playerName">Oyuncu</span></div>
 <div id="stats" class="hudel" hidden></div>
 <div id="hotbar" class="hudel"></div>
 
@@ -561,7 +565,7 @@ function toast(m){toastEl.textContent=m;toastEl.classList.add('show');clearTimeo
 
 /* ---------- Ayarlar ---------- */
 var cfg=jget('kd_cfg',{});
-cfg.rd=Math.min(cfg.rd||3,3);cfg.sens=cfg.sens||3;cfg.cam=cfg.cam||0;cfg.touch=cfg.touch||'mc';
+cfg.rd=Math.max(3,Math.min(cfg.rd||3,6));cfg.sens=Math.max(1,Math.min(cfg.sens||3,5));cfg.cam=cfg.cam||0;cfg.touch=cfg.touch||'mc';
 if(cfg.snd===undefined)cfg.snd=true;
 if(cfg.fx===undefined)cfg.fx=true;if(cfg.fps===undefined)cfg.fps=true;if(!cfg.fpsV2){cfg.fps=true;cfg.fpsV2=1;}
 function saveCfg(){jset('kd_cfg',cfg);}
@@ -3742,6 +3746,14 @@ function skinName(id){
   var r=skinData.filter(function(s){return s.id===id;})[0];
   return r?r.name:'Steve';
 }
+function updatePlayerBadge(){
+  var cv=$('playerFace'),nm=$('playerName');if(!cv||!nm)return;
+  nm.textContent=pname||'Oyuncu';
+  getSkinCv(activeSkin,function(src){
+    var c=cv.getContext('2d');c.clearRect(0,0,32,32);c.imageSmoothingEnabled=false;
+    c.drawImage(src,8,8,8,8,0,0,32,32);
+  });
+}
 
 var gameCv=document.createElement('canvas');gameCv.width=64;gameCv.height=32;
 var gameCtx=gameCv.getContext('2d');paintSteve(gameCtx);
@@ -3849,7 +3861,7 @@ function updateWorldHeld(){
 }
 function applyActiveSkin(){
   getSkinCv(activeSkin,function(cv){
-    gameCtx.clearRect(0,0,64,32);gameCtx.drawImage(cv,0,0);gameTex.needsUpdate=true;
+    gameCtx.clearRect(0,0,64,32);gameCtx.drawImage(cv,0,0);gameTex.needsUpdate=true;updatePlayerBadge();
   });
 }
 applyActiveSkin();
@@ -6298,7 +6310,8 @@ document.addEventListener('pointerlockchange',function(){
 document.addEventListener('mousemove',function(e){
   if(!mouseLocked||state!=='playing'||paused)return;
   var k=.0058*(cfg.sens/3);
-  P.yaw-=e.movementX*k;P.pitch=clamp(P.pitch-e.movementY*k,-1.5,1.5);
+  var mdx=Math.max(-28,Math.min(28,e.movementX)),mdy=Math.max(-28,Math.min(28,e.movementY));
+  P.yaw-=mdx*k;P.pitch=clamp(P.pitch-mdy*k,-1.5,1.5);
 });
 document.addEventListener('mouseup',function(e){
   if(e.button===0&&mouseMine){mouseMine=false;stopMining();}
@@ -6351,6 +6364,7 @@ touch.addEventListener('pointermove',function(e){
     p.moved=Math.hypot(e.clientX-p.sx,e.clientY-p.sy);
     if(p.moved>=14&&!p.held)clearTimeout(p.timer);
     var k=.0058*(cfg.sens/3);
+    dx=Math.max(-28,Math.min(28,dx));dy=Math.max(-28,Math.min(28,dy));
     P.yaw-=dx*k;
     P.pitch=clamp(P.pitch-dy*k,-1.5,1.5);
   }
@@ -7374,6 +7388,7 @@ function mkNameSprite(name){
 }
 var nickSpr=null;
 function setNick(){
+  updatePlayerBadge();
   if(nickSpr){scene.remove(nickSpr);nickSpr.material.map.dispose();nickSpr.material.dispose();nickSpr=null;}
   if(!pname)return;
   nickSpr=mkNameSprite(pname);scene.add(nickSpr);
@@ -7404,7 +7419,7 @@ function rpAdd(p){
   rpDel(p.id);
   var m=buildPlayer(rpTexGet());m.group.visible=false;scene.add(m.group);
   var sp=mkNameSprite(p.name);scene.add(sp);
-  RP[p.id]={m:m,sp:sp,name:p.name,x:p.x,y:p.y,z:p.z,tx:p.x,ty:p.y,tz:p.z,yaw:p.yaw||0,tyaw:p.yaw||0,pitch:p.pitch||0,dim:p.dim|0,ph:0,amp:0,ord:p.ord|0};
+  RP[p.id]={m:m,sp:sp,name:p.name,x:p.x,y:p.y,z:p.z,tx:p.x,ty:p.y,tz:p.z,yaw:p.yaw||0,tyaw:p.yaw||0,pitch:p.pitch||0,tpitch:p.pitch||0,dim:p.dim|0,ph:0,amp:0,ord:p.ord|0};
   if(RPSKIN[p.id])rpSkinApply(p.id);
 }
 function rpDel(id){
@@ -7413,7 +7428,7 @@ function rpDel(id){
   scene.remove(r.m.group);scene.remove(r.sp);r.sp.material.map.dispose();r.sp.material.dispose();delete RP[id];
 }
 function clearRemotes(){for(var id in RP)rpDel(id);}
-function rpMove(m){var r=RP[m.id];if(!r)return;r.tx=m.x;r.ty=m.y;r.tz=m.z;r.tyaw=m.yaw;r.pitch=m.pitch;r.dim=m.dim|0;}
+function rpMove(m){var r=RP[m.id];if(!r)return;r.tx=m.x;r.ty=m.y;r.tz=m.z;r.tyaw=m.yaw;r.tpitch=m.pitch;r.dim=m.dim|0;}
 function updateRemotes(dt){
   for(var id in RP){
     var r=RP[id],vis=state==='playing'&&!!curSrv&&r.dim===dim;
@@ -7424,6 +7439,7 @@ function updateRemotes(dt){
     var spd=dt>0?Math.hypot(mx,mz)/dt:0;
     var dy=r.tyaw-r.yaw;dy=Math.atan2(Math.sin(dy),Math.cos(dy));r.yaw+=dy*Math.min(1,dt*12);
     r.amp+=((spd>.3?Math.min(1,spd/4.6):0)-r.amp)*Math.min(1,dt*12);
+    var pd=(r.tpitch||0)-r.pitch;r.pitch+=(Math.abs(pd)>2?pd:pd)*Math.min(1,dt*14);
     r.ph+=dt*spd*2.1;
     var s1=Math.sin(r.ph)*.85*r.amp,pr=r.m.parts;
     pr.legR.rotation.x=s1;pr.legL.rotation.x=-s1;pr.armR.rotation.x=-s1;pr.armL.rotation.x=s1;
