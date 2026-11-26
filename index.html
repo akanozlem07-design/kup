@@ -504,6 +504,7 @@ body.playing .hudel{visibility:visible}
     <p><b>Alet Seviyeleri & Madenler:</b> Taş kırıldığında <b>Kırıktaş</b> düşer. Kırıktaş ile <b>Taş Kazma</b> ve <b>Ocak</b> yapabilirsin. Demir Cevheri için en az Taş Kazma; <b>Altın</b> ve <b>Elmas Cevheri</b> için en az <b>Demir Kazma</b> gerekir!</p>
     <p><b>Ocak (Furnace):</b> Çalışma masasında 8 Kırıktaş (ortası boş kare) ile Ocak yap. Demir/Altın cevherini külçeye, Kırıktaşı pürüzsüz Taşa, Kumu Cama, Kili Tuğla Bloğuna dönüştür.</p>
     <p><b>6 Biyom ve Doğal Yapılar:</b> Ova, Orman, Çöl (Kaktüsler ve Çöl Kuyuları), Tayga, Karlı Tundra ve Çorak Arazi / Mesa kanyonlarını keşfet. Envanterdeki "Üretim Tarifleri" düğmesinden tüm tariflere bakabilirsin.</p>
+    <p><b>Çiftçilik:</b> Küçük ve uzun çalılıkları kır, ihtimalle Buğday Tohumu düşer. Tohumu çimene, toprağa veya çapayla sürülmüş tarlaya ek; birkaç dakikada altın sarısı buğday olur. Çalışma masasına 3 buğdayı yan yana dizersen Ekmek yapılır.</p>
     <p><b>Canavarlar & Savaş:</b> Zombi, İskelet, Creeper gibi düşmanlar <b>sadece geceleri</b> çıkar, gün doğunca yanıp yok olur. Saldırınca sana hasar verir ve seni geri iter. Kılıç, balta ve çapa ile vur; havadayken inen vuruş kritik hasar yapar.</p>
     <p><b>Yatak:</b> 2 blok yer kaplar. Geceleri uyuyarak sabahı getir (yakında canavar olmamalı) ve doğma noktanı ayarla. Her hayvan farklı et verir; ocakta pişirirsen daha çok doyurur.</p>
     <p><b>Kontroller:</b> W A S D yürü, Boşluk zıpla, E envanter, F elma ye, C kamera. Fare sol tık basılı tutarak kır, sağ tık koy/kullan.</p>
@@ -857,7 +858,17 @@ var B={
 /* Köy üretiminde kullanılan dekoratif tarla ve olgun buğday blokları. */
 B[210]={name:'Olgun Buğday',t:40,s:40,b:40,hard:.1,tool:'any',plant:true,hidden:true};
 for(var torchDir=1;torchDir<=4;torchDir++)B[300+torchDir]=Object.assign({},B[300],{torchDir:torchDir,drop:300,hidden:true});
-B[211]={name:'Sürülmüş Tarla',t:2,s:2,b:2,hard:.6,tool:'shovel',hidden:true};
+B[211]={name:'Sürülmüş Tarla',t:249,s:2,b:2,hard:.6,tool:'shovel',hidden:true,drop:2};
+/* Çalılıklar, buğday evreleri ve tohum */
+B[212]={name:'Küçük Çalılık',t:242,s:242,b:242,hard:.05,tool:'any',plant:true,bush:1,noDrop:true};
+B[213]={name:'Uzun Çalılık',t:243,s:243,b:243,hard:.05,tool:'any',plant:true,bush:2,tall:true,noDrop:true};
+B[214]={name:'Uzun Çalılık (Üst)',t:244,s:244,b:244,hard:.05,tool:'any',plant:true,bush:3,tall:true,noDrop:true,hidden:true};
+B[215]={name:'Buğday (Filiz)',t:245,s:245,b:245,hard:.05,tool:'any',plant:true,crop:0,drop:338,hidden:true};
+B[216]={name:'Buğday (Genç)',t:246,s:246,b:246,hard:.05,tool:'any',plant:true,crop:1,drop:338,hidden:true};
+B[217]={name:'Buğday (Büyümüş)',t:247,s:247,b:247,hard:.05,tool:'any',plant:true,crop:2,drop:338,hidden:true};
+B[210].t=B[210].s=B[210].b=248;B[210].crop=3;B[210].drop=339;
+var CROP_IDS=[215,216,217,210],crops={};
+function cropStageOf(id){return CROP_IDS.indexOf(id);}
 B[325]={name:'Pembe Kiraz Petalı',t:115,s:115,b:115,hard:.05,tool:'any',plant:true,hidden:true};
 B[326]={name:'Menekşe Kiraz Petalı',t:116,s:116,b:116,hard:.05,tool:'any',plant:true,hidden:true};
 var FURNACE_DIR_IDS=[202,203,204,205,206,207,208,209];
@@ -947,7 +958,7 @@ function placeDK(hid,h,x,y,z){
     if(y+1>=H)return false;
     var up=getBlock(x,y+1,z,3);if(up!==0&&up!==7)return false;
     if(!isSolidBlock(getBlock(x,y-1,z,3)))return false;
-    var nid=DOOR0+d.t*8+[3,2,1,0][dkFacing()];setBlock(x,y,z,nid);setBlock(x,y+1,z,nid);return true;
+    var nid=DOOR0+d.t*8+[2,3,0,1][dkFacing()];setBlock(x,y,z,nid);setBlock(x,y+1,z,nid);return true;
   }
   if(d.k==='trap'){var top=h.py<h.y?true:(h.py>h.y?false:hitFrac(h)>.5);setBlock(x,y,z,TRAP0+d.t*10+(top?1:0));return true;}
   var face=h.py>h.y?0:(h.py<h.y?1:(h.px>h.x?2:(h.px<h.x?3:(h.pz>h.z?4:5))));
@@ -1131,7 +1142,10 @@ var ITEMS={
   334:{name:'Büyülü Altın Elma',kind:'food',heal:4},
   335:{name:'Bakır Parçası',kind:'mat'},
   336:{name:'Rüzgar Çubuğu',kind:'mat'},
-  337:{name:'Ağır Çekirdek',kind:'mat'}
+  337:{name:'Ağır Çekirdek',kind:'mat'},
+  338:{name:'Buğday Tohumu',kind:'mat'},
+  339:{name:'Buğday',kind:'mat'},
+  340:{name:'Ekmek',kind:'food',heal:6}
 };
 /* Tekneler: her tahta türünden bir tekne (MC'deki gibi renkli) */
 var BOAT_W=[{id:310,p:8,n:'Meşe',c:0x9c7a45},{id:311,p:45,n:'Huş',c:0xd8cfa6},{id:312,p:66,n:'Ladin',c:0x6b4e2e},{id:313,p:158,n:'Kiraz',c:0xe3a9b9},{id:314,p:178,n:'Solgun Meşe',c:0xcfc7b8},{id:315,p:179,n:'Akasya',c:0xc0683a},{id:316,p:180,n:'Kızıl',c:0x8c3042},{id:317,p:181,n:'Mavi',c:0x2b7f80}];
@@ -1566,6 +1580,42 @@ tpaint(46,function(x,y,r){
       atx.putImageData(img,ox,oy);
     }
   });
+})();
+
+/* 242-249: Çalılıklar, buğday evreleri ve sürülmüş tarla */
+(function(){
+  function leafy(i,top,bot,hwf){
+    tpaint(i,function(x,y,r){
+      if(y<top||y>bot)return [0,0,0,0];
+      if(y>=bot-1&&(x===7||x===8))return [104,76,44,255];
+      if(Math.abs(x-7.5)>hwf(y)+(r()<.3?.8:0)||r()<.1)return [0,0,0,0];
+      var c=nzc([52,126,50],18,r);
+      if(r()<.2)c=shade(c,24);else if(r()<.15)c=shade(c,-22);
+      return c;
+    });
+  }
+  leafy(242,7,15,function(y){return 2.5+(y-7)*.55;});
+  leafy(243,0,15,function(y){return 5.5+Math.sin(y*.7);});
+  leafy(244,2,15,function(y){return 1.5+(y-2)*.34;});
+  function wheat(i,h,stem,head){
+    tpaint(i,function(x,y,r){
+      var ks=[1,4,7,10,13],hs=[h-2,h,h-1,h,h-3],k;
+      for(k=0;k<5;k++){
+        var top=16-hs[k];
+        if(x===ks[k]&&y>=top){
+          if(head&&y<top+3)return nzc(head,14,r);
+          return nzc(stem,12,r);
+        }
+        if(x===ks[k]+1&&k%2===0&&y>=top+3)return shade(nzc(stem,10,r),-18);
+      }
+      return [0,0,0,0];
+    });
+  }
+  wheat(245,4,[96,170,60],null);
+  wheat(246,8,[86,160,56],null);
+  wheat(247,12,[140,172,60],[170,170,70]);
+  wheat(248,14,[200,170,60],[234,198,76]);
+  tpaint(249,function(x,y,r){var c=nzc([96,64,42],8,r);if(y%4===1)c=shade(c,-26);else if(y%4===2)c=shade(c,8);return c;});
 })();
 
 function tileURL(i){
@@ -2263,7 +2313,7 @@ function stampVillage(d,bx,bz,cx,cz,v){
   put(tx-1,ty+8,tz,300,false);put(tx,ty+8,tz,197,false);
   if(typeof villageChestKeys!=='undefined')villageChestKeys[chestKey(tx,ty+8,tz)]=1;
   /* İki sulama kanallı, tamamen büyümüş buğday tarlası. */
-  [[-20,-33],[11,-33]].forEach(function(fp){var fx=v.x+fp[0],fz=v.z+fp[1],fy=heightAt(fx,fz);for(dx=0;dx<10;dx++)for(dz=0;dz<9;dz++){var yy=heightAt(fx+dx,fz+dz);put(fx+dx,yy,fz+dz,((dx===4||dx===5)?7:211),false);if(dx!==4&&dx!==5)put(fx+dx,yy+1,fz+dz,210,true);}});
+  [[-20,-33],[11,-33]].forEach(function(fp){var fx=v.x+fp[0],fz=v.z+fp[1],fy=heightAt(fx,fz);for(dx=0;dx<10;dx++)for(dz=0;dz<9;dz++){var yy=heightAt(fx+dx,fz+dz);put(fx+dx,yy,fz+dz,((dx===4||dx===5)?7:211),false);if(dx!==4&&dx!==5){var wr=hash2(fx+dx,fz+dz,seed+9500);put(fx+dx,yy+1,fz+dz,wr<.55?210:(wr<.75?217:(wr<.9?216:215)),true);}}});
   if(!villageCenters.some(function(q){return q.x===v.x&&q.z===v.z;}))villageCenters.push(v);
 }
 
@@ -2534,6 +2584,13 @@ function genOver(cx,cz){
             }else{
               var flChance=(bio2==='plains')?0.055:((bio2==='forest')?0.032:0.008);
               if(r2<flChance)d[((((sy+1)<<4)+z2)<<4)+x2]=(hash2(wx2,wz2,seed+77)>0.48)?53:54;
+              else{
+                var bshr=hash2(wx2,wz2,seed+9400),bi1=((((sy+1)<<4)+z2)<<4)+x2;
+                var smC=(bio2==='forest')?0.12:((bio2==='plains')?0.10:((bio2==='taiga'||bio2==='spruce')?0.06:0.045));
+                var tlC=(bio2==='forest')?0.06:((bio2==='plains')?0.05:((bio2==='taiga'||bio2==='spruce')?0.025:0.02));
+                if(bshr<smC)d[bi1]=212;
+                else if(bshr<smC+tlC&&sy+2<H&&d[bi1+256]===0){d[bi1]=213;d[bi1+256]=214;}
+              }
             }
           }
         }else if(bio2==='desert' && topId===4){
@@ -3242,14 +3299,16 @@ function buildMesh(ch){
         }
         /* Çiçekler ve Kuru Çalılar için 3B Çapraz (X) Bitki Geometrisi */
         if(bd.plant){
+          if(bd.crop!==undefined&&bd.crop<3)cropAdd(wx,y,wz);
           var ptile=bd.s,pcol=ptile%AT,prow=(ptile/AT)|0;
           var u0=(pcol+EPS)/AT,u1=(pcol+1-EPS)/AT;
           var v0=1-(prow+1-EPS)/AT,v1=1-(prow+EPS)/AT;
+          var ph=bd.tall?1:0.85;
           var diag=[
-            [[0.15,0,0.15],[0.85,0,0.85],[0.85,0.85,0.85],[0.15,0.85,0.15]],
-            [[0.85,0,0.85],[0.15,0,0.15],[0.15,0.85,0.15],[0.85,0.85,0.85]],
-            [[0.15,0,0.85],[0.85,0,0.15],[0.85,0.85,0.15],[0.15,0.85,0.85]],
-            [[0.85,0,0.15],[0.15,0,0.85],[0.15,0.85,0.85],[0.85,0.85,0.15]]
+            [[0.15,0,0.15],[0.85,0,0.85],[0.85,ph,0.85],[0.15,ph,0.15]],
+            [[0.85,0,0.85],[0.15,0,0.15],[0.15,ph,0.15],[0.85,ph,0.85]],
+            [[0.15,0,0.85],[0.85,0,0.15],[0.85,ph,0.15],[0.15,ph,0.85]],
+            [[0.85,0,0.15],[0.15,0,0.85],[0.15,ph,0.85],[0.85,ph,0.15]]
           ];
           var pB=blAt(wx,y,wz)/LMAX,pS=skAt(wx,y,wz)/LMAX;
           if(id===325||id===326){
@@ -3388,6 +3447,7 @@ function decorSupported(x,y,z,id){
     if(td===3)return isSolidBlock(getBlock(x-1,y,z,0));
     return isSolidBlock(getBlock(x+1,y,z,0));
   }
+  if(id===214)return getBlock(x,y-1,z,0)===213;
   return isSolidBlock(getBlock(x,y-1,z,0));
 }
 function checkDecorAround(x,y,z){
@@ -3397,7 +3457,7 @@ function checkDecorAround(x,y,z){
     if(bd&&bd.plant&&!decorSupported(q[0],q[1],q[2],id)){
       setBlock(q[0],q[1],q[2],0);
       var dropId=bd.torch?300:(bd.drop||id);
-      if(wmode!=='creative')spawnDrop(dropId,1,q[0]+.5,q[1]+.35,q[2]+.5);
+      if(wmode!=='creative'&&!bd.noDrop)spawnDrop(dropId,1,q[0]+.5,q[1]+.35,q[2]+.5);
       spawnBreakParticles(id,q[0],q[1],q[2]);
     }
   }
@@ -3407,7 +3467,11 @@ function setBlock(x,y,z,id){
   if(!ch||y<0||y>=H)return;
   var lx=x&15,lz=z&15,idx=(((y<<4)+lz)<<4)+lx,oldId=ch.d[idx];
   ch.d[idx]=id;ch.edited=true;ch.em=null;
-  if(oldId!==id)checkDecorAround(x,y,z);
+  if(oldId!==id){
+    checkDecorAround(x,y,z);
+    var cns=cropStageOf(id),cos=cropStageOf(oldId);
+    if(cns===0)cropAdd(x,y,z);else if(cos>=0&&cns<0)cropDel(x,y,z);
+  }
   var ek=ekey(cx,cz);(edits[ek]||(edits[ek]={}))[idx]=id;dirty=true;
   if(cur&&cur.net){
     /* Ücretsiz sunucu yeniden başlasa bile telefondaki yedek güncel kalsın. */
@@ -4006,6 +4070,7 @@ function finishBreak(h){
   setBlock(h.x,h.y,h.z,0);
   if(DK[bid]&&DK[bid].k==='door'){[-1,1].forEach(function(dy){if(dkDoorAt(h.x,h.y+dy,h.z,DK[bid])){setBlock(h.x,h.y+dy,h.z,0);spawnBreakParticles(bid,h.x,h.y+dy,h.z);}});}
   if(bid===142)killPortalsAround(h.x,h.y,h.z);
+  if(bid===214&&getBlock(h.x,h.y-1,h.z,0)===213){setBlock(h.x,h.y-1,h.z,0);spawnBreakParticles(213,h.x,h.y-1,h.z);}
   spawnBreakParticles(bid,h.x,h.y,h.z);
   useToolDurability();
   var bbd=B[bid];
@@ -4027,7 +4092,15 @@ function finishBreak(h){
     var bd=B[bid];
     var heldId=slots[sel]?slots[sel].id:0;
     var heldIt=ITEMS[heldId];
-    if(bd&&bd.leaf){
+    if(bd&&bd.bush){
+      /* Çalılık: belli bir ihtimalle Buğday Tohumu düşer */
+      if(Math.random()<(bd.bush===1?0.25:0.35))spawnDrop(338,1,h.x+0.5,h.y+0.5,h.z+0.5);
+    }else if(bd&&bd.crop!==undefined){
+      if(bd.crop>=3){
+        spawnDrop(339,1,h.x+0.5,h.y+0.5,h.z+0.5);
+        var sdN=(Math.random()*3)|0;if(sdN>0)spawnDrop(338,sdN,h.x+0.5,h.y+0.5,h.z+0.5);
+      }else spawnDrop(338,1,h.x+0.5,h.y+0.5,h.z+0.5);
+    }else if(bd&&bd.leaf){
       /* Yapraklar yalnızca Makas ile kırıldığında blok olarak düşer */
       if(heldIt&&heldIt.kind==='shears'){
         spawnDrop(bid,1,h.x+0.5,h.y+0.5,h.z+0.5);
@@ -4126,6 +4199,39 @@ function mobTouchesMob(m,x,y,z){
   }
   return false;
 }
+/* ---------- Çalılık, Tohum ve Buğday Büyümesi ---------- */
+function cropKeyStr(x,y,z){return dim+':'+x+','+y+','+z;}
+function cropAdd(x,y,z){var k=cropKeyStr(x,y,z);if(!crops[k])crops[k]={x:x,y:y,z:z,d:dim,t:Date.now()};}
+function cropDel(x,y,z){delete crops[cropKeyStr(x,y,z)];}
+function plantSeed(h){
+  if(h.py!==h.y+1||h.px!==h.x||h.pz!==h.z){toast('Tohumu toprağın üst yüzüne ek.');return;}
+  var sb=getBlock(h.x,h.y,h.z,0);
+  if(!(sb===1||sb===2||sb===211)){toast('Tohum için çimen, toprak veya sürülmüş tarla gerekli.');return;}
+  var x=h.px,y=h.py,z=h.pz;
+  if(y>=H||getBlock(x,y,z,3)!==0)return;
+  if(mobBlocksPlacement(x,y,z)){toast('Bir mobun içine blok koyamazsın.');return;}
+  setBlock(x,y,z,215);sfx.place();svUse();buzz();
+}
+function tillSoil(h){
+  var b=getBlock(h.x,h.y,h.z,0);
+  if(!(b===1||b===2)||getBlock(h.x,h.y+1,h.z,3)!==0)return;
+  setBlock(h.x,h.y,h.z,211);sfx.place();useToolDurability();buzz();
+}
+setInterval(function(){
+  if(state!=='playing'||!cur)return;
+  var now=Date.now(),n=0,k,c;
+  for(k in crops){
+    c=crops[k];if(c.d!==dim)continue;
+    if(!chunks.get(key(c.x>>4,c.z>>4)))continue;
+    var st=cropStageOf(getBlock(c.x,c.y,c.z,0));
+    if(st<0||st>=3){delete crops[k];continue;}
+    var per=50000*(0.75+hash3(c.x,c.y,c.z,seed+7777)*0.5);
+    var want=Math.min(3,Math.floor((now-c.t)/per));
+    if(want>st){setBlock(c.x,c.y,c.z,CROP_IDS[want]);if(want>=3)delete crops[k];}
+    if(++n>40)break;
+  }
+},2000);
+
 function doPlace(noHit){
   /* Yerleştirme, önceki basılı kırma durumunu kol animasyonuna taşımamalı. */
   if(mining.active)stopMining();
@@ -4157,6 +4263,9 @@ function doPlace(noHit){
   if(surv && targetBlock===174){openVault(h.x,h.y,h.z);return;}
   if(surv && targetBlock===11){openInv('table');return;}
   if(surv && isFurnaceBlock(targetBlock)){openFurnace(h.x,h.y,h.z);return;}
+  {var hidS=heldItemId(),hitS=ITEMS[hidS];
+   if(hidS===338){plantSeed(h);return;}
+   if(hitS&&hitS.kind==='hoe'){tillSoil(h);return;}}
   var x=h.px,y=h.py,z=h.pz;
   if(y<0||y>=H)return;
   var cur2=getBlock(x,y,z,3);
@@ -4183,6 +4292,10 @@ function doPlace(noHit){
   if(hid===12){
     var sx=Math.sin(P.yaw),sz=Math.cos(P.yaw),fd=Math.abs(sx)>Math.abs(sz)?(sx>0?0:1):(sz>0?2:3);
     setBlock(x,y,z,furnaceId(fd,false));sfx.place();svUse();buzz();return;
+  }
+  if(hid===213){
+    if(y+1>=H||getBlock(x,y+1,z,3)!==0){toast('Uzun çalılık için 2 blok boşluk gerekli.');return;}
+    setBlock(x,y,z,213);setBlock(x,y+1,z,214);sfx.place();svUse();buzz();return;
   }
   if(hid===86){placeBed(x,y,z);return;}
   setBlock(x,y,z,hid);
@@ -4542,7 +4655,7 @@ function chestLoot(k){
 }
 function villageLoot(k){
   if(chestStore[k])return chestStore[k];
-  var out=[];[[27,3],[26,5],[20,8],[34,1],[30,1],[84,2],[56,1],[57,1],[72,1]].forEach(function(e){if(Math.random()<.62)out[(Math.random()*20)|0]={id:e[0],n:e[1]};});
+  var out=[];[[27,3],[26,5],[20,8],[34,1],[30,1],[84,2],[56,1],[57,1],[72,1],[338,6],[340,3]].forEach(function(e){if(Math.random()<.62)out[(Math.random()*20)|0]={id:e[0],n:e[1]};});
   chestStore[k]=out;return out;
 }
 function cloneChests(src){var out={};if(!src)return out;for(var k in src){out[k]=[];for(var i=0;i<20;i++)out[k][i]=cloneItem(src[k][i]);}return out;}
@@ -4934,10 +5047,15 @@ itemTexCache[201]=makePixelIcon(function(c){
   pxRect(c,6,3,4,2,'#5aa83a');pxRect(c,4,5,8,6,'#d62d4c');
   pxRect(c,5,4,2,2,'#f06a78');pxRect(c,8,6,2,2,'#ffb45e');pxRect(c,6,10,4,2,'#a81835');
 });
+itemTexCache[338]=makePixelIcon(function(c){var cs=['#8a6a2c','#a98a3e','#6b8a2e'];[[4,9],[7,7],[10,9],[6,11],[9,11],[8,9]].forEach(function(p,i){pxRect(c,p[0],p[1],2,2,cs[i%3]);pxRect(c,p[0],p[1],1,1,'#d8c070');});});
+itemTexCache[339]=makePixelIcon(function(c){for(var i=0;i<10;i++){pxRect(c,3+i,13-i,2,2,'#c9a13a');pxRect(c,4+i,13-i,1,1,'#8a6a1c');}pxRect(c,9,2,3,5,'#e8c04a');pxRect(c,11,1,3,4,'#f2d466');pxRect(c,7,4,3,4,'#d9ae3c');pxRect(c,10,3,1,2,'#fff1a8');});
+itemTexCache[340]=makePixelIcon(function(c){pxRect(c,3,6,10,6,'#b9772f');pxRect(c,4,5,8,1,'#c98a3c');pxRect(c,4,12,8,1,'#8a5420');pxRect(c,4,6,8,2,'#d9a050');pxRect(c,5,8,1,3,'#a0642a');pxRect(c,8,8,1,3,'#a0642a');pxRect(c,11,8,1,3,'#a0642a');});
 [[156,158],[160,178],[164,179],[149,180],[150,181]].forEach(function(m){RC.push({sl:[m[0]],r:[m[1],4]});});
 [158,178,179,180,181].forEach(function(P){RC.push({p:[[P],[P]],r:[20,4]});RC.push({p:[[P,P],[P,P]],r:[11,1]});});
 RC.push({p:[[26],[20]],r:[300,4]});
 RC.push({p:[[98],[95]],r:[305,2]});
+RC.push({p:[[339,339,339]],r:[340,1]}); /* 3 Buğday yan yana -> Ekmek */
+RECIPE_GUIDE.push({id:340,t:'Ekmek',d:'Çalışma masasında 3 Buğdayı yatay düz sıraya diz (yan yana). Buğday Tohumu çalılıkları kırınca ihtimalle düşer; tohumu çimene, toprağa veya çapayla sürülmüş tarlaya ek, altın sarısı olunca kır.'});
 RECIPE_GUIDE.push({id:300,t:'Meşale (×4)',d:'1 Kömür üstüne 1 Çubuk. Ejderha Yumurtası için: yumurtanın altındaki bloğun hemen altına meşale koy, aradaki bloğu kır. Yumurta düşüp meşaleye değince eşya olur.'});
 RECIPE_GUIDE.push({id:305,t:'Mum (×2)',d:'1 İp üstüne 1 Kemik. Sağlam bir zemine konur; küçük ama gerçek ışık verir. Elinde tutarken de etrafı aydınlatır.'});
 BOAT_W.forEach(function(b){RC.push({p:[[b.p,0,b.p],[b.p,b.p,b.p]],r:[b.id,1]});});
@@ -5913,15 +6031,15 @@ function creativeTabs(){
     {n:'İnşaat',ids:[8,45,66,3,42,48,10,16,18,19,50,24,25,9,75,76]},
     {n:'Nether',ids:[142,145,146,147,148,149,150,151,152,153,154,174,177]},
     {n:'Yeni Biyom',ids:[156,157,158,160,161,162,164,165,170,171,172,173,324,327,328,176,178,179,180,181,182,183,189,190,191,192,194]},
-    {n:'Doğa',ids:[1,2,4,49,46,47,5,43,22,6,44,23,17,53,54,55,67,68,69,7,85]},
+    {n:'Doğa',ids:[1,2,4,49,46,47,5,43,22,6,44,23,17,53,54,55,212,213,67,68,69,7,85]},
     {n:'Cevher',ids:[14,15,51,52,77,78,79,80]},
     {n:'İşlevsel',ids:[11,12,86,197,320,321,322,323,198,300,305,310,311,312,313,314,315,316,317]},
     {n:'Basamak & Merdiven',ids:SB_TAB},
     {n:'Kapı & Buton',ids:DK_TAB},
     {n:'⚔ Saldırı',ids:[195,196,332,36,37,41,64,65,32,33,39,60,61,130,131,132,133,134]},
     {n:'⛏ Aletler',ids:[30,31,38,58,59,34,35,40,62,63,70,71,72,136,137]},
-    {n:'🍖 Yiyecek',ids:[21,101,102,103,104,105,106,111,112,113,114,115,116,90,91,94,201]},
-    {n:'Malzeme',ids:[20,26,27,56,57,81,82,83,84,92,93,95,96,97,98,99,100,135,185,186,187,188,330,331,332,333,334,335,336]},
+    {n:'🍖 Yiyecek',ids:[21,340,101,102,103,104,105,106,111,112,113,114,115,116,90,91,94,201]},
+    {n:'Malzeme',ids:[20,338,339,26,27,56,57,81,82,83,84,92,93,95,96,97,98,99,100,135,185,186,187,188,330,331,332,333,334,335,336]},
     {n:'Özel',ids:[140,175,143,144,184,13]}
   ];
   var used={};T.forEach(function(t){t.ids.forEach(function(i){used[i]=1;});});
@@ -6671,6 +6789,7 @@ function startWorld(w){
   wxS.type=0;wxS.wet=0;wxS.grace=35;wxS.chk=1;wxS.flash=0;
   cur=w;seed=w.seed;wtype=w.type;wmode=w.mode;dim=w.dim||0;dragonDead=!!w.dd;dragonHp=Math.max(1,Math.min(200,Number(w.dhp)||200));hideEndCrystals();endCrystals=null;portalLock=true;
   edits=unpackEdits(jget('kd_w_'+w.id,{}));dirty=false;
+  crops=(w.crops&&typeof w.crops==='object')?w.crops:{};w.crops=crops;
   bedPos=w.bed||null;NETB={};clearEntities();resetChunks();releaseInput();
   if(w.pos){
     P.x=w.pos.x;P.y=w.pos.y;P.z=w.pos.z;P.yaw=w.pos.yaw;P.bodyYaw=P.yaw;P.pitch=w.pos.pitch;
@@ -6698,7 +6817,7 @@ function saveGame(){
   cur.pos={x:P.x,y:P.y,z:P.z,yaw:P.yaw,pitch:P.pitch};
   var activeDragon=null;for(var di=0;di<mobs.length;di++)if(mobs[di].t===22){activeDragon=mobs[di];break;}
   if(activeDragon)dragonHp=activeDragon.hp;
-  cur.dim=dim;cur.dd=dragonDead;cur.dhp=Math.max(1,Math.min(200,Number(dragonHp)||200));cur.ec=endCrystals?endCrystals.map(function(c){return !!c.alive;}):cur.ec;cur.xpv=xp;cur.bed=bedPos;cur.tod=tod;cur.fly=P.fly;cur.hot=HOT.slice();cur.chot=HOT.slice();cur.played=Date.now();
+  cur.crops=crops;cur.dim=dim;cur.dd=dragonDead;cur.dhp=Math.max(1,Math.min(200,Number(dragonHp)||200));cur.ec=endCrystals?endCrystals.map(function(c){return !!c.alive;}):cur.ec;cur.xpv=xp;cur.bed=bedPos;cur.tod=tod;cur.fly=P.fly;cur.hot=HOT.slice();cur.chot=HOT.slice();cur.played=Date.now();
   if(cur.net)jset('kd_end_'+cur.net,{dd:cur.dd,dhp:cur.dhp,ec:cur.ec,bed:cur.bed,dim:cur.dim,pos:cur.pos});
   if(surv){
     var svPayload={
@@ -6933,16 +7052,16 @@ function lsAdd(h){if(!pid||!h)return;var L=lsGet();if(L.indexOf(h)<0){L.push(h);
 function wipeSrvLocal(h,keepList){
   if(!h)return;
   if(!keepList)lsDel(h);
-  ['kd_bkm_','kd_bke_','kd_bkq_','kd_end_','kd_gen_'].forEach(function(p){store.del(p+h);});
+  ['kd_bkm_','kd_bke_','kd_bkq_','kd_bkt_','kd_snap_','kd_end_','kd_gen_'].forEach(function(p){store.del(p+h);});
   if(pid){store.del('kd_w_sv_'+h+'_'+pid);store.del('kd_sv_sv_'+h+'_'+pid);}
   if(bkBaseH===h){bkBase={};}
   if(curSrv===h)pendSaved=false;
 }
-function lsDel(h){if(!pid)return;jset('kd_lists_'+pid,lsGet().filter(function(x){return x!==h;}));store.del('kd_bkm_'+h);store.del('kd_bke_'+h);store.del('kd_bkq_'+h);}
+function lsDel(h){if(!pid)return;jset('kd_lists_'+pid,lsGet().filter(function(x){return x!==h;}));store.del('kd_bkm_'+h);store.del('kd_bke_'+h);store.del('kd_bkq_'+h);store.del('kd_bkt_'+h);store.del('kd_snap_'+h);}
 function bkMeta(h,b){if(b&&b.owner&&b.owner.id)jset('kd_bkm_'+h,b);}
-var bkBase=null,bkBaseH='',pendSaved=false;
+var bkBase=null,bkBaseH='',pendSaved=false,bkCR={},bkCRd=false;
 function bkLoad(h){
-  bkBaseH=h;bkBase={};
+  bkBaseH=h;bkBase={};bkCR=jget('kd_bkt_'+h,{})||{};bkCRd=false;
   var s=store.get('kd_bke_'+h);
   if(s&&s.length<4000000){try{bkBase=JSON.parse(s)||{};}catch(e){bkBase={};}}
 }
@@ -6952,6 +7071,7 @@ function bkSave(){
   var k,i,m,d,n=0;
   for(k in edits){m=edits[k];d=bkBase[k]||(bkBase[k]={});for(i in m){d[i]=m[i];n++;}}
   if(n){var s;try{s=JSON.stringify(bkBase);}catch(e){s=null;}if(s&&s.length<4000000)store.set('kd_bke_'+curSrv,s);}
+  if(bkCRd){try{store.set('kd_bkt_'+curSrv,JSON.stringify(bkCR));}catch(e){}bkCRd=false;}
   if(netQ.length){try{store.set('kd_bkq_'+curSrv,JSON.stringify(netQ.slice(0,100000)));pendSaved=true;}catch(e){}}
   else if(pendSaved){store.del('kd_bkq_'+curSrv);pendSaved=false;}
   bkDirty=false;
@@ -6962,7 +7082,20 @@ function syncHost(h){
   var mt=jget('kd_bkm_'+h,null),es=store.get('kd_bke_'+h);
   if(!mt&&!es)return Promise.resolve();
   var ed=null;if(es&&es.length<3000000){try{ed=JSON.parse(es);}catch(e){}}
-  return req('sync.srv',{host:h,meta:mt,edits:ed,gen:store.get('kd_gen_'+h)||undefined}).then(function(r){if(r&&r.deleted)wipeSrvLocal(h);else if(r&&r.stale)wipeSrvLocal(h,true);},function(){});
+  var cr=jget('kd_bkt_'+h,null)||{},sn=jget('kd_snap_'+h,null),gen=store.get('kd_gen_'+h)||undefined,k,i,c;
+  if(sn&&sn.cr)for(k in sn.cr)if(!(cr[k]>=sn.cr[k]))cr[k]=sn.cr[k];
+  /* Önce sadece özet (parça: [hücre sayısı, zaman]) gider; sunucu yalnızca farklı parçaları ister. */
+  var dg={};if(ed)for(k in ed){c=0;for(i in ed[k])c++;dg[k]=[c,cr[k]||0];}
+  return req('sync.srv',{host:h,meta:mt,gen:gen,dg:dg,snap:sn||undefined}).then(function(r){
+    if(r&&r.deleted){wipeSrvLocal(h);return;}
+    if(r&&r.stale){wipeSrvLocal(h,true);return;}
+    if(!r||!r.need||!r.need.length||!ed)return;
+    var p=Promise.resolve(),need=r.need;
+    for(var a=0;a<need.length;a+=150)(function(part){
+      p=p.then(function(){var sub={},scr={};part.forEach(function(q){if(ed[q]){sub[q]=ed[q];scr[q]=cr[q]||0;}});return req('sync.put',{host:h,gen:gen,edits:sub,cr:scr});});
+    })(need.slice(a,a+150));
+    return p;
+  }).then(function(){},function(){});
 }
 function syncBack(){
   if(!pid)return Promise.resolve();
@@ -6970,13 +7103,21 @@ function syncBack(){
   L.forEach(function(x){p=p.then(function(){return syncHost(x);});});
   return p.then(function(){return req('sync.lists',{lists:L});}).then(function(){},function(){});
 }
+/* Sunucunun tam kopyası (sandık/tekne/saat/parça zamanları): odada tek kalınca ve son çıkarken gelir, telefonda saklanır. */
+function snapStore(m){
+  if(!m.host||!m.snap||typeof m.snap!=='object')return;
+  var s;try{s=JSON.stringify(m.snap);}catch(e){return;}
+  if(s.length>1500000){var o=Object.assign({},m.snap);delete o.cont;delete o.ct;try{s=JSON.stringify(o);}catch(e){return;}}
+  if(s.length<=1500000)store.set('kd_snap_'+m.host,s);
+}
 function netMsg(e){
   var m;try{m=JSON.parse(e.data);}catch(x){return;}
   if(m.t==='ver'){if(typeof m.now==='number')NET.off=m.now-Date.now();checkBuild(m.v);return;}
+  if(m.t==='snap'||m.t==='final'){snapStore(m);return;}
   if(m.id!==undefined&&NET.reqs[m.id]){var r=NET.reqs[m.id];delete NET.reqs[m.id];if(m.ok)r.res(m);else r.rej(new Error(m.err||'Hata.'));return;}
   netEvent(m);
 }
-function netPush(k,i,v){netQ.push([k,i,v]);bkDirty=true;}
+function netPush(k,i,v){netQ.push([k,i,v]);bkCR[k]=srvNow();bkCRd=true;bkDirty=true;}
 function flushNet(all){
   if(!NETG||!netQ.length||!NET.ws||NET.ws.readyState!==1)return;
   do{netSend('blk',{b:netQ.splice(0,1000)});}while(all&&netQ.length);
@@ -7001,7 +7142,7 @@ function netEvent(m){
     case 'ev':evRecv(m);break;
     case 'boat':boatNetRecv(m);break;
     case 'cont':contRecv(m);break;
-    case 'blk':m.b.forEach(function(e){netBlock(e[0],e[1],e[2]);});break;
+    case 'blk':m.b.forEach(function(e){netBlock(e[0],e[1],e[2]);if(m.ts){bkCR[e[0]]=m.ts;bkCRd=true;}});break;
     case 'kick':toast(m.reason||'Sunucudan atıldın.');exitToMenu();break;
     case 'closed':var hh0=curSrv;toast('Sunucu kapatıldı.');exitToMenu();wipeSrvLocal(hh0);break;
     case 'role':if(SVM[curSrv])SVM[curSrv].role=m.role;toast(m.role==='admin'?'Sunucuda yetkili yapıldın!':'Yetkin alındı.');break;
@@ -7629,6 +7770,7 @@ function joinSrv(h){
     if(r.gen)store.set('kd_gen_'+h,r.gen);
     lsAdd(h);bkMeta(h,r.bk);
     bkLoad(h);pendSaved=false;
+    if(r.cr){for(var ck0 in r.cr)if(!(bkCR[ck0]>=r.cr[ck0]))bkCR[ck0]=r.cr[ck0];bkCRd=true;}
     var srvE=r.edits||{},miss=[],pend=[],k,i,m,d;
     /* Telefon yedeğinde olup sunucuda olmayan bloklar (sunucu sıfırlandıysa) geri yüklenir */
     for(k in bkBase){m=bkBase[k];for(i in m){if(!srvE[k]||srvE[k][i]===undefined){(srvE[k]||(srvE[k]={}))[i]=m[i];miss.push([k,+i,m[i]]);}}}
@@ -7689,7 +7831,7 @@ window.addEventListener('resize',resize);
 window.addEventListener('orientationchange',resize);
 window.addEventListener('beforeunload',saveGame);
 window.addEventListener('pagehide',function(){saveGame();if(bkDirty)bkSave();leaveSrv();});
-document.addEventListener('visibilitychange',function(){if(document.hidden){saveGame();if(state==='playing'&&document.activeElement!==chatInput)pauseGame();}});
+document.addEventListener('visibilitychange',function(){if(document.hidden){if(curSrv&&NETG){try{flushNet(true);bkSave();netSend('snap.req');}catch(e){}}saveGame();if(state==='playing'&&document.activeElement!==chatInput)pauseGame();}});
 setInterval(function(){if(state==='playing'&&!paused)saveGame();},4000);
 
 /* ---------- Başlangıç ve Ana Döngü ---------- */
